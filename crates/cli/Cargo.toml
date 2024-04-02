@@ -1,5 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
+
 [package]
 name = "cli"
+description = "CLI of the beautytips code prettifier"
+readme = "README.md"
+keywords = ["prettifier", "code", "tool"]
+categories = ["command-line-utilities", "development-tools"]
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -11,6 +18,9 @@ version.workspace = true
 [[bin]]
 name = "beautytips"
 path = "src/main.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 beautytips = { workspace = true }

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
+
 [workspace]
 
 default-members = ["crates/beautytips", "crates/cli"]
@@ -13,6 +16,17 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/hunger/beautytips"
 rust-version = "1.77"
 version = "0.1.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+cargo = "warn"
+complexity = "warn"
+correctness = "forbid"
+pedantic = "warn"
+style = "warn"
+suspicious = "warn"
 
 [workspace.dependencies]
 beautytips = { version = "=0.1.0", path = "crates/beautytips", default_features = false }

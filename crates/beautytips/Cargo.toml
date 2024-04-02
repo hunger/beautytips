@@ -1,5 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
+
 [package]
 name = "beautytips"
+description = "The beautytips code prettifier"
+keywords = ["prettifier", "code", "tool"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -7,5 +14,8 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
