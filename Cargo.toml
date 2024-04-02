@@ -1,0 +1,18 @@
+[workspace]
+
+default-members = ["crates/beautytips", "crates/cli"]
+
+members = ["crates/beautytips", "crates/cli"]
+resolver = "2"
+
+[workspace.package]
+authors = ["Tobias Hunger <tobias.hunger@gmail.com>"]
+edition = "2021"
+homepage = "https://github.com/hunger/beautytips"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/hunger/beautytips"
+rust-version = "1.77"
+version = "0.1.0"
+
+[workspace.dependencies]
+beautytips = { version = "=0.1.0", path = "crates/beautytips", default_features = false }

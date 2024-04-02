@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "beautytips"
+path = "src/main.rs"
+
+[dependencies]
+beautytips = { workspace = true }
