@@ -23,4 +23,6 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+anyhow = "1.0.81"
 beautytips = { workspace = true }
+clap = { version = "4.5.4", features = ["cargo"] }

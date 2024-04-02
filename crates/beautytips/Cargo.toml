@@ -19,3 +19,4 @@ version.workspace = true
 workspace = true
 
 [dependencies]
+xshell = "0.2.6"
