@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+name: CI
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        rust_version: [stable, nightly]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ matrix.rust_version }}
+          key: rust-v1
+          
+      - name: cargo check
+        run: cargo check --all-features --workspace
+
+  binaries:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: nightly
+          key: rust-v1
+          
+      - name: cargo build
+        run: cargo build --release --all-features --workspace
+
+      - name: Archive binaries
+        uses: actions/upload-artifact@v4
+        with:
+            name: beautytips-${{matrix.os}}
+            path: |
+                target/release/beautytips
+
+  test:
+    strategy:
+      matrix:
+        rust_version: [stable, nightly]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ matrix.rust_version }}
+          key: rust-v1
+          
+      - name: cargo test
+        run: cargo test --all-features --workspace
+
+  fmt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+          key: rust-v1
+          
+      - name: cargo fmt
+        run: cargo +stable fmt --check --all
+
+  clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: nightly
+          key: rust-clippy-v1
+          components: clippy
+          
+      - name: cargo clippy
+        run: cargo +nightly clippy --all-features --workspace
+
