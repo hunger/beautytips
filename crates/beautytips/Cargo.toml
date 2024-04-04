@@ -19,4 +19,7 @@ version.workspace = true
 workspace = true
 
 [dependencies]
-xshell = "0.2.6"
+async-trait = "0.1.79"
+futures = "0.3.30"
+tokio = { version = "1.37.0", features = ["macros", "rt", "rt-multi-thread", "process", "sync", "time"] }
+tracing = "0.1.40"

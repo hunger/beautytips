@@ -1,32 +1,128 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 mod git;
 mod jj;
 
-pub type BoxedVcs = Box<dyn Vcs>;
+#[allow(clippy::module_name_repetitions)]
+pub type BoxedVcs = Box<dyn Vcs + Sync + Send>;
+#[allow(clippy::module_name_repetitions)]
+pub type DynVcs = &'static (dyn Vcs + Sync + Send);
+
+static KNOWN_VCSES: OnceLock<Vec<BoxedVcs>> = OnceLock::new();
 
 /// Trait used to supposrt different version control systems
+#[async_trait::async_trait]
 pub trait Vcs {
     /// The name of the version control system
     fn name(&self) -> &str;
-    
+
     /// Is this VCS supported on this platform?
-    fn is_supported(&self, ctx: &crate::Context) -> bool;
-    
+    async fn is_supported(&self, current_directory: &Path) -> bool;
+
     /// Find changed files in the `root_directory`
-    fn changed_files(&self, ctx: &crate::Context) -> Vec<PathBuf>;
+    ///
+    /// # Errors
+    ///
+    /// Reports an error if the data could not get retrieved.
+    async fn changed_files(
+        &self,
+        current_directory: &Path,
+        from_revision: Option<&String>,
+        to_revision: Option<&String>,
+    ) -> crate::Result<Vec<PathBuf>>;
 
     /// Find the directory root
-    fn repository_root(&self, ctx: &crate::Context) -> Option<PathBuf>;
+    async fn repository_root(&self, current_directory: &Path) -> Option<PathBuf>;
 }
 
 #[must_use]
-pub fn known_vcses() -> Vec<BoxedVcs> {
-    vec![
-        Box::new(git::Git::new()),
-        Box::new(jj::Jj::new()),
-    ]
+fn known_vcses() -> Vec<DynVcs> {
+    KNOWN_VCSES
+        .get_or_init(|| vec![Box::new(git::Git::new()), Box::new(jj::Jj::new())])
+        .iter()
+        .map(Box::as_ref)
+        .collect()
+}
+
+async fn helper(vcs: DynVcs, current_directory: &Path) -> Option<(DynVcs, PathBuf)> {
+    vcs.repository_root(current_directory).await.map(|r| (vcs, r))
+}
+
+#[must_use]
+async fn auto_detect_vcs(current_directory: &Path) -> Option<(DynVcs, PathBuf)> {
+    futures::future::join_all(
+        known_vcses()
+            .into_iter()
+            .map(|vcs| helper(vcs, current_directory)),
+    )
+    .await
+    .into_iter()
+    .flatten()
+    .next()
+}
+
+#[must_use]
+fn vcs_by_name(name: &str) -> Option<DynVcs> {
+    known_vcses().into_iter().find(|v| v.name() == name)
+}
+
+#[tracing::instrument]
+async fn vcs_for_configuration(
+    current_directory: &Path,
+    config: crate::VcsInput,
+) -> crate::Result<(DynVcs, PathBuf)> {
+    if let Some(tool) = &config.tool {
+        tracing::debug!("Looking for VCS {tool}");
+        let Some(vcs) = vcs_by_name(tool) else {
+            return Err(crate::Error::new_invalid_configuration(format!(
+                "Version control system {tool} is not supported"
+            )));
+        };
+
+        let Some(root_path) = vcs.repository_root(current_directory).await else {
+            return Err(crate::Error::new_invalid_configuration(format!(
+                "No repository of version control system {tool} found"
+            )));
+        };
+
+        Ok((vcs, root_path))
+    } else {
+        tracing::debug!("Auto-detecting VCS");
+        auto_detect_vcs(current_directory).await.ok_or_else(|| {
+            crate::Error::new_invalid_configuration(
+                "Could not auto-detect a supported version control system".to_string(),
+            )
+        })
+    }
+}
+
+/// Find all the files that changed based on the `VcsInput` configurattion
+///
+/// # Errors
+///
+/// Reports invalid configuration errors or others when the data could not get retrieved
+#[tracing::instrument]
+pub(crate) async fn find_files_changed(
+    current_directory: PathBuf,
+    config: crate::VcsInput,
+) -> crate::Result<(PathBuf, Vec<PathBuf>)> {
+    let to_rev = config.to_revision.clone();
+    let from_rev = config.from_revision.clone();
+    
+    let (vcs, repo_path) = vcs_for_configuration(&current_directory, config).await?;
+    tracing::trace!("Using {} to look up changed files in {repo_path:?}...", vcs.name());
+
+    vcs.changed_files(
+        &repo_path,
+        from_rev.as_ref(),
+        to_rev.as_ref(),
+    )
+    .await
+    .map(|files| (repo_path, files))
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::os::unix::ffi::OsStrExt;
 
 use crate::vcs;
@@ -15,21 +15,35 @@ impl Git {
     }
 }
 
+#[async_trait::async_trait]
 impl vcs::Vcs for Git {
     fn name(&self) -> &str {
         "git"
     }
 
-    fn changed_files(&self, _ctx: &crate::Context) -> Vec<PathBuf> {
+    #[tracing::instrument]
+    async fn changed_files(
+        &self,
+        _current_directory: &Path,
+        _from_revision: Option<&String>,
+        _to_revision: Option<&String>,
+    ) -> crate::Result<Vec<std::path::PathBuf>> {
         todo!()
     }
 
-    fn is_supported(&self, ctx: &crate::Context) -> bool {
-        xshell::cmd!(ctx.sh, "git --version").quiet().output().is_ok()
+    #[tracing::instrument]
+    async fn is_supported(&self, current_directory: &Path) -> bool {
+        tokio::process::Command::new("git").args(["--version"]).current_dir(current_directory).status().await.is_ok()
     }
 
-    fn repository_root(&self, ctx: &crate::Context) -> Option<PathBuf> {
-        let output = xshell::cmd!(ctx.sh, "git rev-parse --show-toplevel").quiet().output().ok()?;
+    #[tracing::instrument]
+    async fn repository_root(&self, current_directory: &Path) -> Option<PathBuf> {
+        let output = tokio::process::Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .current_dir(current_directory)
+            .output()
+            .await.ok()?;
+        tracing::trace!("top level result: {output:?}");
         if output.status.success() {
             let output = std::ffi::OsStr::from_bytes(&output.stdout[..(output.stdout.len() - 1)]);
             let path = PathBuf::from(output);
