@@ -8,8 +8,8 @@ pub(crate) mod vcs;
 
 use std::path::PathBuf;
 
-pub use actions::{ActionId, ActionDefinition};
 use actions::ActionUpdateReceiver;
+pub use actions::{ActionDefinition, ActionId};
 pub use errors::{Error, Result};
 
 #[derive(Clone, Debug, Default)]

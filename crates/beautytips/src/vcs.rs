@@ -51,7 +51,9 @@ fn known_vcses() -> Vec<DynVcs> {
 }
 
 async fn helper(vcs: DynVcs, current_directory: &Path) -> Option<(DynVcs, PathBuf)> {
-    vcs.repository_root(current_directory).await.map(|r| (vcs, r))
+    vcs.repository_root(current_directory)
+        .await
+        .map(|r| (vcs, r))
 }
 
 #[must_use]
@@ -114,15 +116,14 @@ pub(crate) async fn find_files_changed(
 ) -> crate::Result<(PathBuf, Vec<PathBuf>)> {
     let to_rev = config.to_revision.clone();
     let from_rev = config.from_revision.clone();
-    
-    let (vcs, repo_path) = vcs_for_configuration(&current_directory, config).await?;
-    tracing::trace!("Using {} to look up changed files in {repo_path:?}...", vcs.name());
 
-    vcs.changed_files(
-        &repo_path,
-        from_rev.as_ref(),
-        to_rev.as_ref(),
-    )
-    .await
-    .map(|files| (repo_path, files))
+    let (vcs, repo_path) = vcs_for_configuration(&current_directory, config).await?;
+    tracing::trace!(
+        "Using {} to look up changed files in {repo_path:?}...",
+        vcs.name()
+    );
+
+    vcs.changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
+        .await
+        .map(|files| (repo_path, files))
 }

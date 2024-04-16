@@ -3,15 +3,24 @@
 
 use std::{fmt::Display, path::PathBuf};
 
+mod args;
 mod inputs;
 
 #[derive(Clone, Debug)]
-pub struct ActionId (String);
+pub struct ActionId(String);
 
 impl ActionId {
+    /// Create a new `ActionId`
+    ///
+    /// # Errors
+    ///
+    /// Raise an invaliv configuration error if the action id contains anything
+    /// but lowercase ASCII letters or '_'.
     pub fn new(input: &str) -> crate::Result<Self> {
-        if input.chars().any(|c| !(('a'..='z').contains(&c)) && c != '_') {
-            Err(crate::Error::new_invalid_configuration(format!("{input} is not a valid action id")))
+        if input.chars().any(|c| !c.is_ascii_lowercase() && c != '_') {
+            Err(crate::Error::new_invalid_configuration(format!(
+                "{input} is not a valid action id"
+            )))
         } else {
             Ok(ActionId(input.to_string()))
         }
@@ -50,28 +59,25 @@ pub(crate) enum ActionUpdate {
         result: ActionResult,
     },
 }
-
 pub(crate) type ActionUpdateSender = tokio::sync::mpsc::Sender<ActionUpdate>;
 pub(crate) type ActionUpdateReceiver = tokio::sync::mpsc::Receiver<ActionUpdate>;
 
 #[tracing::instrument]
 async fn report(sender: &ActionUpdateSender, message: ActionUpdate) {
-    tracing::debug!("Sending message to reporter");
     sender
         .send(message)
         .await
         .expect("Failed to send message to reporter");
-    tracing::trace!("Message sent");
 }
 
-// #[tracing::instrument]
-async fn run_file_action(
+#[tracing::instrument(skip(inputs))]
+async fn run_single_action(
     current_directory: PathBuf,
     sender: ActionUpdateSender,
     action: ActionDefinition,
-    // input_sender: inputs::InputQueryTx,
+    inputs: inputs::InputQuery,
 ) -> crate::Result<()> {
-    tracing::debug!("run file action {}", action.id);
+    tracing::debug!("running action '{}': {:?}", action.id, action.command);
 
     sender
         .send(ActionUpdate::Started {
@@ -81,7 +87,7 @@ async fn run_file_action(
         .expect("Failed to send start message to reporter");
 
     let Some(command) = action.command.first() else {
-        tracing::error!("No command in {}", action.id);
+        tracing::error!("No command in action '{}'", action.id);
         let message = format!("No command defined in action '{}'", action.id);
         sender
             .send(ActionUpdate::Done {
@@ -95,40 +101,73 @@ async fn run_file_action(
         return Err(crate::Error::new_invalid_configuration(message));
     };
 
-    let output = tokio::process::Command::new(command)
-        .current_dir(current_directory)
-        .args(action.command.iter().skip(1))
-        .output()
-        .await
-        .map_err(|e| crate::Error::new_process_failed(command, e))?;
+    let args = args::parse_args(&action.command, inputs).await;
+    let mut args = match args {
+        Ok(args) => args,
+        Err(e) => {
+            sender
+                .send(ActionUpdate::Done {
+                    action_id: action.id.clone(),
+                    result: ActionResult::Error {
+                        message: format!("Argument parsing failed: {e}"),
+                    },
+                })
+                .await
+                .expect("Failed to send message to reporter");
+            return Ok(());
+        }
+    };
 
-    tracing::trace!("result of running {}: {output:?}", action.id);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
 
-    if output.status.code() != Some(action.expected_exit_code) {
-        tracing::debug!("Unexpected return code for {}", action.id);
-        let err = crate::Error::new_unexpected_exit_code(command, 0, output.status.code());
-        report(
-            &sender,
-            ActionUpdate::Done {
-                action_id: action.id.clone(),
-                result: ActionResult::Error {
-                    message: err.to_string(),
+    loop {
+        let output = tokio::process::Command::new(command)
+            .current_dir(current_directory.clone())
+            .args(args.args_iter())
+            .output()
+            .await
+            .map_err(|e| crate::Error::new_process_failed(command, e))?;
+
+        tracing::trace!(
+            "result of running action '{}' ({} {}): {output:?}",
+            action.id,
+            command,
+            args.print()
+        );
+
+        if output.status.code() != Some(action.expected_exit_code) {
+            tracing::debug!("Unexpected return code for action '{}'", action.id);
+            let err = crate::Error::new_unexpected_exit_code(command, 0, output.status.code());
+            report(
+                &sender,
+                ActionUpdate::Done {
+                    action_id: action.id.clone(),
+                    result: ActionResult::Error {
+                        message: err.to_string(),
+                    },
                 },
-            },
-        )
-        .await;
-        return Err(err);
+            )
+            .await;
+            return Ok(()); // Not really an error: We expected this
+        }
+
+        stdout.extend_from_slice(&output.stdout);
+        stdout.push(b'\n');
+        stderr.extend_from_slice(&output.stderr);
+        stderr.push(b'\n');
+
+        if args.increment() {
+            break;
+        }
     }
 
-    tracing::trace!("Success running {}", action.id);
+    tracing::trace!("Success running '{}'", action.id);
     report(
         &sender,
         ActionUpdate::Done {
             action_id: action.id.clone(),
-            result: ActionResult::Ok {
-                stdout: output.stdout,
-                stderr: output.stderr,
-            },
+            result: ActionResult::Ok { stdout, stderr },
         },
     )
     .await;
@@ -152,13 +191,11 @@ pub async fn run(
     let mut join_set = tokio::task::JoinSet::new();
 
     for a in &actions {
-            let cd = current_directory.clone();
-            let tx = sender.clone();
-            let a = a.clone();
-            let id = a.id.clone();
+        let cd = current_directory.clone();
+        let tx = sender.clone();
+        let a = a.clone();
 
-            join_set.spawn(run_file_action(cd, tx, a /* cache_handle.sender() */));
-            tracing::debug!("spawned {id} (=> in JS: {})", join_set.len());
+        join_set.spawn(run_single_action(cd, tx, a, cache_handle.query()));
     }
 
     tracing::trace!("All actions started");

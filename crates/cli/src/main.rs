@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::io::Write;
-
 use anyhow::Result;
-use beautytips::{ActionId, Reporter};
 use tracing_subscriber::prelude::*;
 
 mod arg_parse;
 
-struct DebugReporter { }
+struct DebugReporter {}
 
 impl beautytips::Reporter for DebugReporter {
     fn report_start(&mut self, action_id: beautytips::ActionId) {
@@ -25,31 +22,55 @@ fn main() -> Result<()> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     tracing_subscriber::registry().with(stdout_log).init();
-    
+
     let actions = vec![
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("echo_test").unwrap(),
-            command: [
-                "/bin/sh",
-                "-c",
-                "echo -e \"Foobar\"; sleep 2; exit 0"
-            ]
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+            command: ["/bin/sh", "-c", "echo -e \"baz\"; sleep 2; exit 0"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             expected_exit_code: 0,
         },
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("fail").unwrap(),
-            command: ["/bin/sh", "-c", "echo -e \"This will fail\"; sleep 5; exit 10"]
+            command: [
+                "/bin/sh",
+                "-c",
+                "echo -e \"This will fail\"; sleep 5; exit 10",
+            ]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+            expected_exit_code: 1,
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("file").unwrap(),
+            command: ["/bin/sh", "-c", "echo -e {{files}}"]
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
-            expected_exit_code: 1,
+            expected_exit_code: 0,
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("files").unwrap(),
+            command: ["/bin/sh", "-c", "echo -e {{files...}}"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            expected_exit_code: 0,
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("foobar").unwrap(),
+            command: ["/bin/sh", "-c", "echo -e {{foobar...}}"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            expected_exit_code: 0,
         },
     ];
 
-    let mut reporter = DebugReporter { };
+    let reporter = DebugReporter {};
 
     beautytips::run(
         std::env::current_dir()?,

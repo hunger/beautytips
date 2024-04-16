@@ -61,7 +61,12 @@ impl vcs::Vcs for Jj {
 
     #[tracing::instrument]
     async fn is_supported(&self, current_directory: &Path) -> bool {
-        tokio::process::Command::new(self.name()).args(["--version"]).current_dir(current_directory).status().await.is_ok()
+        tokio::process::Command::new(self.name())
+            .args(["--version"])
+            .current_dir(current_directory)
+            .status()
+            .await
+            .is_ok()
     }
 
     #[tracing::instrument]
@@ -70,7 +75,8 @@ impl vcs::Vcs for Jj {
             .args(["--color=never", "workspace", "root"])
             .current_dir(current_directory)
             .output()
-            .await.ok()?;
+            .await
+            .ok()?;
 
         tracing::trace!("top level result: {output:?}");
 

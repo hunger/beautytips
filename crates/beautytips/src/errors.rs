@@ -13,6 +13,10 @@ pub struct Error {
 
 /// Note: this is intentionally not public.
 enum ErrorKind {
+    InputGeneratorError {
+        input_query: String,
+        message: String,
+    },
     InvalidConfiguration {
         message: String,
     },
@@ -37,6 +41,12 @@ impl From<ErrorKind> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self.kind {
+            ErrorKind::InputGeneratorError {
+                message,
+                input_query,
+            } => {
+                write!(f, "Failed to generate input \"{input_query}\": {message}")
+            }
             ErrorKind::InvalidConfiguration { message } => {
                 write!(f, "Invalid configuration: {message}")
             }
@@ -65,6 +75,13 @@ impl std::error::Error for Error {}
 
 /// `pub(crate)` constructors, visible only in this crate.
 impl Error {
+    pub(crate) fn new_input_generator(input_query: String, message: String) -> Self {
+        ErrorKind::InputGeneratorError {
+            input_query,
+            message,
+        }
+        .into()
+    }
     pub(crate) fn new_invalid_configuration(message: String) -> Self {
         ErrorKind::InvalidConfiguration { message }.into()
     }

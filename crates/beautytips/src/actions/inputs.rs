@@ -1,20 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 
-pub(crate) struct InputQuery {
+pub(crate) struct InputQueryMessage {
     input: String,
-    sender: InputQueryReplyTx,
+    tx: InputQueryReplyTx,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct Input {
-    pub(crate) inputs: Vec<PathBuf>,
-    pub(crate) must_loop: bool,
+#[derive(Clone)]
+pub(crate) struct InputQuery(InputQueryTx);
+
+impl InputQuery {
+    #[tracing::instrument(skip(self))]
+    pub(crate) async fn inputs(&self, input: String) -> InputQueryReplyMessage {
+        tracing::trace!("Querying values for input \"{input}\"");
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        self.0
+            .send(InputQueryMessage {
+                input,
+                tx: reply_tx,
+            })
+            .await
+            .expect("Internal communication should not fail");
+
+        reply_rx
+            .await
+            .expect("Internal communication should not fail")
+    }
 }
 
 pub(crate) struct InputCacheHandle {
@@ -26,41 +39,39 @@ impl InputCacheHandle {
     #[tracing::instrument(skip(self))]
     pub(crate) async fn finish(self) {
         tracing::trace!("Waiting for InputCache to finish");
-        self.handle.await.expect("Failed to join task").expect("Task failed");
+        drop(self.tx);
+        
+        self.handle
+            .await
+            .expect("Failed to join task")
+            .expect("Task failed");
         tracing::trace!("InputCache finished");
     }
 
     #[tracing::instrument(skip(self))]
-    pub(crate) fn sender(&self) -> InputQueryTx {
-        self.tx.clone()
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub(crate) async fn get_inputs(&self, input: String) -> Result<Input, String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx.send(InputQuery { input, sender: reply_tx }).await.expect("Internal communication should not fail");
-        
-        reply_rx.await.expect("Internal communication should not fail")
+    pub(crate) fn query(&self) -> InputQuery {
+        InputQuery(self.tx.clone())
     }
 }
 
 #[derive(Clone, Debug)]
 struct GeneratorReply {
     input: String,
-    data: Result<Vec<PathBuf>, String>,
+    data: InputQueryReplyMessage,
 }
 
-pub(crate) type InputQueryTx = tokio::sync::mpsc::Sender<InputQuery>;
-type InputQueryRx = tokio::sync::mpsc::Receiver<InputQuery>;
-type InputQueryReplyTx = tokio::sync::oneshot::Sender<Result<Input, String>>;
-type InputQueryReplyRx = tokio::sync::oneshot::Receiver<Result<Input, String>>;
+type InputQueryTx = tokio::sync::mpsc::Sender<InputQueryMessage>;
+type InputQueryRx = tokio::sync::mpsc::Receiver<InputQueryMessage>;
+type InputQueryReplyMessage = Result<Vec<PathBuf>, String>;
+type InputQueryReplyTx = tokio::sync::oneshot::Sender<InputQueryReplyMessage>;
+// type InputQueryReplyRx = tokio::sync::oneshot::Receiver<InputQueryReplyType>;
 
 type InputGeneratorReplyTx = tokio::sync::mpsc::Sender<GeneratorReply>;
 type InputGeneratorReplyRx = tokio::sync::mpsc::Receiver<GeneratorReply>;
 
 enum InputMapEntry {
-    Cached(Result<Vec<PathBuf>, String>),
-    Generating(Vec<(InputQueryReplyTx, bool)>),
+    Cached(InputQueryReplyMessage),
+    Generating(Vec<InputQueryReplyTx>),
 }
 
 struct InputCache {
@@ -93,62 +104,49 @@ impl InputCache {
             reply = self.generator_channel.1.recv() => {
                 self.handle_generator_reply(reply)
             }
-        } 
+        }
     }
 
     #[tracing::instrument(skip(self, query))]
-    fn handle_input_query(&mut self, query: Option<InputQuery>) -> Result<bool, String> {
+    fn handle_input_query(&mut self, query: Option<InputQueryMessage>) -> Result<bool, String> {
         let Some(query) = query else {
             return Ok(false);
         };
 
-        let (query_name, must_loop) = match query.input.as_str() {
-            "files" => Ok(("files", false)),
-            "file" => Ok(("files", true)),
-            "cargo_targets" => Ok(("cargo_targets", false)),
-            "cargo_target" => Ok(("cargo_targets", true)),
-            _ => Err(format!("{} not found in possible inputs", query.input)),
-        }?;
-
-        let sender = query.sender;
+        let sender = query.tx;
         match self.inputs.get_mut(&query.input) {
             Some(InputMapEntry::Cached(data)) => {
                 sender
-                    .send(
-                        data.as_ref()
-                            .map(|d| Input {
-                                inputs: d.clone(),
-                                must_loop,
-                            })
-                            .map_err(Clone::clone),
-                    )
+                    .send(data.clone())
                     .expect("Failed to send internal message");
             }
-            Some(InputMapEntry::Generating(data)) => data.push((sender, must_loop)),
+            Some(InputMapEntry::Generating(data)) => data.push(sender),
             None => {
                 let generator_tx = self.generator_channel.0.clone();
+                let query_name = query.input.clone();
+                let qn = query_name.clone();
 
-                match query_name {
-                    "files" => unreachable!(
-                    "files are always known, no need to fill this information in after the fact"
-                ),
+                match query_name.as_str() {
+                    "files" => unreachable!(),
                     "cargo_targets" => {
                         tokio::spawn(async move {
                             generator_tx
                                 .send(GeneratorReply {
-                                    input: query_name.to_string(),
+                                    input: qn,
                                     data: Err("Not implemented yet!".to_string()),
                                 })
                                 .await
                                 .expect("Failed to send internal message");
                         });
 
-                        self.inputs.insert(
-                            query_name.to_string(),
-                            InputMapEntry::Generating(vec![(sender, must_loop)]),
-                        );
+                        self.inputs
+                            .insert(query_name, InputMapEntry::Generating(vec![sender]));
                     }
-                    _ => unreachable!("Unknown input provided by code"),
+                    _ => {
+                        sender
+                            .send(Err(format!("Input '{query_name}' is not supported")))
+                            .expect("Failed to send internal message");
+                    }
                 };
             }
         };
@@ -162,16 +160,16 @@ impl InputCache {
             return Ok(true);
         };
 
+        tracing::trace!("Handle generator reply for {}", reply.input);
+
         let Some(InputMapEntry::Generating(to_notify)) = self
             .inputs
             .insert(reply.input, InputMapEntry::Cached(reply.data.clone()))
         else {
             unreachable!("Unexpected content in cache hashmap");
         };
-        for (tx, must_loop) in to_notify {
-            let reply = reply.data.clone();
-            let to_send = reply.map(|inputs| Input { inputs, must_loop });
-            tx.send(to_send)
+        for tx in to_notify {
+            tx.send(reply.data.clone())
                 .expect("Internal communication should not fail");
         }
 
