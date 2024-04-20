@@ -75,7 +75,7 @@ fn main() -> Result<()> {
     beautytips::run(
         std::env::current_dir()?,
         beautytips::InputFiles::Vcs(beautytips::VcsInput::default()),
-        actions,
+        &actions,
         Box::new(reporter),
     )?;
 

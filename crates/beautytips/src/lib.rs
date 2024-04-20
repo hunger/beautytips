@@ -90,10 +90,10 @@ async fn handle_reports(mut reporter: Box<dyn Reporter>, mut rx: ActionUpdateRec
 ///
 /// Panics whenever tokio decides to panic.
 #[tracing::instrument(skip(reporter))]
-pub fn run(
+pub fn run<'a>(
     current_directory: PathBuf,
     inputs: InputFiles,
-    actions: Vec<actions::ActionDefinition>,
+    actions: &'a [actions::ActionDefinition],
     reporter: Box<dyn Reporter>,
 ) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
@@ -105,6 +105,16 @@ pub fn run(
             tracing::trace!("Inside tokio runtime block");
 
             let (root_directory, files) = collect_input_files(current_directory, inputs).await?;
+
+            // # Safety: actions are valid during the entire time the
+            // o runtime is up. So it should be safe to treat the `actions`
+            // as static.
+            let actions = unsafe {
+                std::mem::transmute::<
+                    &'a [actions::ActionDefinition],
+                    &'static [actions::ActionDefinition],
+                >(actions)
+            };
 
             tracing::debug!(
                 "detected root directory: {root_directory:?} with changed files: {files:?}"

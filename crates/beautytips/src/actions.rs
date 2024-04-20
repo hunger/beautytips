@@ -74,7 +74,7 @@ async fn report(sender: &ActionUpdateSender, message: ActionUpdate) {
 async fn run_single_action(
     current_directory: PathBuf,
     sender: ActionUpdateSender,
-    action: ActionDefinition,
+    action: &'static ActionDefinition,
     inputs: inputs::InputQuery,
 ) -> crate::Result<()> {
     tracing::debug!("running action '{}': {:?}", action.id, action.command);
@@ -183,17 +183,16 @@ async fn run_single_action(
 pub async fn run(
     current_directory: PathBuf,
     sender: ActionUpdateSender,
-    actions: Vec<ActionDefinition>,
+    actions: &'static [ActionDefinition],
     files: Vec<PathBuf>,
 ) -> crate::Result<()> {
     tracing::trace!("Starting actions");
     let cache_handle = inputs::setup_input_cache(files);
     let mut join_set = tokio::task::JoinSet::new();
 
-    for a in &actions {
+    for a in actions {
         let cd = current_directory.clone();
         let tx = sender.clone();
-        let a = a.clone();
 
         join_set.spawn(run_single_action(cd, tx, a, cache_handle.query()));
     }
