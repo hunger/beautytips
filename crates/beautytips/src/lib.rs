@@ -53,9 +53,42 @@ async fn collect_input_files(
     current_directory: PathBuf,
     inputs: InputFiles,
 ) -> Result<(PathBuf, Vec<PathBuf>)> {
-    match inputs {
+    assert!(current_directory.is_absolute());
+
+    let (root_directory, files) = match inputs {
         InputFiles::Vcs(config) => vcs::find_files_changed(current_directory, config).await,
+    }?;
+    assert!(root_directory.is_absolute());
+
+    let root_directory = tokio::fs::canonicalize(&root_directory)
+        .await
+        .map_err(|e| {
+            Error::new_io_error(&format!("Could not canonicalize '{root_directory:?}"), e)
+        })?;
+
+    std::env::set_current_dir(&root_directory).map_err(|e| {
+        Error::new_io_error(
+            &format!("Failed to set current directory to {root_directory:?}"),
+            e,
+        )
+    })?;
+
+    let mut canonical_files = Vec::new();
+    for f in &files {
+        let f = tokio::fs::canonicalize(&f)
+            .await
+            .map_err(|e| Error::new_io_error(&format!("Could not canonicalize {f:?}"), e))?;
+
+        if f.is_absolute() {
+            if f.starts_with(&root_directory) {
+                canonical_files.push(f);
+            }
+        } else if !f.starts_with("..") {
+            canonical_files.push(root_directory.join(f));
+        }
     }
+
+    Ok((root_directory, canonical_files))
 }
 
 #[tracing::instrument(skip(reporter))]

@@ -39,7 +39,10 @@ fn to_str(input: &[u8]) -> String {
     if s.is_empty() {
         return s;
     }
-    let s = s.split('\n').collect::<Vec<_>>().join(&format!("\n{indent}"));
+    let s = s
+        .split('\n')
+        .collect::<Vec<_>>()
+        .join(&format!("\n{indent}"));
     format!("{indent}{s}")
 }
 
@@ -80,7 +83,7 @@ impl beautytips::Reporter for Reporter {
             }
             beautytips::ActionResult::NotApplicable => {
                 println!(
-                    "{}❄️ {action_id} [NOT APPLICABLE]{}",
+                    "{}🚙 {action_id} [NOT APPLICABLE]{}",
                     termion::color::Fg(termion::color::Blue),
                     termion::color::Fg(termion::color::Reset)
                 );

@@ -144,7 +144,10 @@ fn split_arg(arg: &str) -> Vec<String> {
 async fn input_arg(
     arg: &str,
     inputs: inputs::InputQuery,
+    input_filters: &inputs::InputFilters,
 ) -> crate::Result<Option<(Vec<PathBuf>, bool)>> {
+    static EMPTY: Vec<glob::Pattern> = vec![];
+
     if arg.starts_with("{{") && arg.ends_with("}}") {
         let input_name = &arg[2..(arg.len() - 2)];
         tracing::debug!("{arg} is an input argument with name: {input_name}");
@@ -154,9 +157,17 @@ async fn input_arg(
             (input_name, false)
         };
 
-        let paths = inputs.inputs(input_name.to_string()).await.map_err(|e| {
-            crate::Error::new_input_generator(input_name.to_string(), e.to_string())
-        })?;
+        let current_filters = input_filters.get(input_name).unwrap_or(&EMPTY);
+
+        let paths = inputs
+            .inputs(input_name.to_string())
+            .await
+            .map_err(|e| crate::Error::new_input_generator(input_name.to_string(), e.to_string()))?
+            .into_iter()
+            .filter(|p| {
+                current_filters.is_empty() || current_filters.iter().any(|f| f.matches_path(p))
+            })
+            .collect();
 
         Ok(Some((paths, is_array)))
     } else {
@@ -166,14 +177,22 @@ async fn input_arg(
 }
 
 #[tracing::instrument(skip(inputs))]
-pub(crate) async fn parse_arg(arg: &str, inputs: inputs::InputQuery) -> crate::Result<Vec<Arg>> {
+pub(crate) async fn parse_arg(
+    arg: &str,
+    inputs: inputs::InputQuery,
+    input_filters: &inputs::InputFilters,
+) -> crate::Result<Option<Vec<Arg>>> {
     let argument_parts = split_arg(arg);
 
     let mut result = Vec::new();
 
     if argument_parts.len() == 1 {
         let arg = &argument_parts[0];
-        if let Some((paths, is_array)) = input_arg(arg, inputs).await? {
+        if let Some((paths, is_array)) = input_arg(arg, inputs, input_filters).await? {
+            if paths.is_empty() {
+                return Ok(None);
+            }
+
             if is_array {
                 result.extend(
                     paths
@@ -192,7 +211,11 @@ pub(crate) async fn parse_arg(arg: &str, inputs: inputs::InputQuery) -> crate::R
         let mut extended_arg = vec![String::new()];
 
         for p in &argument_parts {
-            if let Some((paths, is_array)) = input_arg(p, inputs.clone()).await? {
+            if let Some((paths, is_array)) = input_arg(p, inputs.clone(), input_filters).await? {
+                if paths.is_empty() {
+                    return Ok(None);
+                }
+
                 if is_array {
                     let total = paths
                         .iter()
@@ -224,18 +247,27 @@ pub(crate) async fn parse_arg(arg: &str, inputs: inputs::InputQuery) -> crate::R
         result.push(Arg::new(extended_arg.iter().map(Into::into).collect()));
     }
 
-    Ok(result)
+    Ok(Some(result))
 }
 
 #[tracing::instrument(skip(inputs))]
-pub(crate) async fn parse_args(args: &[String], inputs: inputs::InputQuery) -> crate::Result<Args> {
+pub(crate) async fn parse_args(
+    args: &[String],
+    inputs: inputs::InputQuery,
+    input_filters: &inputs::InputFilters,
+) -> crate::Result<Option<Args>> {
     let mut parsed_args = Vec::with_capacity(args.len() - 1);
 
     for a in args.iter().skip(1) {
-        parsed_args.extend_from_slice(&parse_arg(a, inputs.clone()).await?[..]);
+        let filtered_args = parse_arg(a, inputs.clone(), input_filters).await?;
+        if let Some(filtered_args) = filtered_args {
+            parsed_args.extend_from_slice(&filtered_args);
+        } else {
+            return Ok(None);
+        }
     }
 
-    Ok(Args(parsed_args))
+    Ok(Some(Args(parsed_args)))
 }
 
 #[cfg(test)]

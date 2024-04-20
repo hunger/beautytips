@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use tracing_subscriber::prelude::*;
 
@@ -10,9 +12,9 @@ mod reporter;
 fn main() -> Result<()> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
-    tracing_subscriber::registry().with(stdout_log
-        .with_filter(tracing_subscriber::filter::LevelFilter::WARN)
-    ).init();
+    tracing_subscriber::registry()
+        .with(stdout_log.with_filter(tracing_subscriber::filter::LevelFilter::WARN))
+        .init();
 
     let actions = vec![
         beautytips::ActionDefinition {
@@ -22,6 +24,7 @@ fn main() -> Result<()> {
                 .map(ToString::to_string)
                 .collect(),
             expected_exit_code: 0,
+            input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("fail").unwrap(),
@@ -34,6 +37,7 @@ fn main() -> Result<()> {
             .map(ToString::to_string)
             .collect(),
             expected_exit_code: 1,
+            input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("file").unwrap(),
@@ -42,6 +46,7 @@ fn main() -> Result<()> {
                 .map(ToString::to_string)
                 .collect(),
             expected_exit_code: 0,
+            input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("files").unwrap(),
@@ -50,6 +55,7 @@ fn main() -> Result<()> {
                 .map(ToString::to_string)
                 .collect(),
             expected_exit_code: 0,
+            input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
             id: beautytips::ActionId::new("foobar").unwrap(),
@@ -58,6 +64,30 @@ fn main() -> Result<()> {
                 .map(ToString::to_string)
                 .collect(),
             expected_exit_code: 0,
+            input_filters: HashMap::default(),
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("file_filtered").unwrap(),
+            command: ["/bin/sh", "-c", "echo -e {{files...}}"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            expected_exit_code: 0,
+            input_filters: vec![(
+                "files".to_string(),
+                vec![glob::Pattern::new("*.ignoreme").unwrap()],
+            )]
+            .into_iter()
+            .collect(),
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("cargo_targets").unwrap(),
+            command: ["/bin/sh", "-c", "echo -e {{cargo_targets...}}"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            expected_exit_code: 0,
+            input_filters: HashMap::default(),
         },
     ];
 

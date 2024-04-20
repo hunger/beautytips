@@ -38,6 +38,7 @@ pub struct ActionDefinition {
     pub id: ActionId,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
+    pub input_filters: inputs::InputFilters,
 }
 
 #[derive(Clone, Debug)]
@@ -86,7 +87,11 @@ async fn run_single_action(
         .await
         .expect("Failed to send start message to reporter");
 
-    if std::env::var("SKIP").unwrap_or_default().split('\n').any(|s| s == action.id.to_string()) {
+    if std::env::var("SKIP")
+        .unwrap_or_default()
+        .split('\n')
+        .any(|s| s == action.id.to_string())
+    {
         tracing::trace!("Skipping '{}'", action.id);
         report(
             &sender,
@@ -114,9 +119,19 @@ async fn run_single_action(
         return Err(crate::Error::new_invalid_configuration(message));
     };
 
-    let args = args::parse_args(&action.command, inputs).await;
+    let args = args::parse_args(&action.command, inputs, &action.input_filters).await;
     let mut args = match args {
-        Ok(args) => args,
+        Ok(Some(args)) => args,
+        Ok(None) => {
+            sender
+                .send(ActionUpdate::Done {
+                    action_id: action.id.clone(),
+                    result: ActionResult::NotApplicable,
+                })
+                .await
+                .expect("Failed to send message to reporter");
+            return Ok(());
+        }
         Err(e) => {
             sender
                 .send(ActionUpdate::Done {
@@ -141,7 +156,7 @@ async fn run_single_action(
             .args(args.args_iter())
             .output()
             .await
-            .map_err(|e| crate::Error::new_process_failed(command, e))?;
+            .map_err(|e| crate::Error::new_io_error(&format!("Could not start '{command}'"), e))?;
 
         tracing::trace!(
             "result of running action '{}' ({} {}): {output:?}",
@@ -205,7 +220,7 @@ pub async fn run(
     files: Vec<PathBuf>,
 ) -> crate::Result<()> {
     tracing::trace!("Starting actions");
-    let cache_handle = inputs::setup_input_cache(files);
+    let cache_handle = inputs::setup_input_cache(current_directory.clone(), files);
     let mut join_set = tokio::task::JoinSet::new();
 
     for a in actions {

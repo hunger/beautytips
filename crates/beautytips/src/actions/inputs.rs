@@ -3,6 +3,10 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
+mod cargo;
+
+pub type InputFilters = HashMap<String, Vec<glob::Pattern>>;
+
 pub(crate) struct InputQueryMessage {
     input: String,
     tx: InputQueryReplyTx,
@@ -40,7 +44,7 @@ impl InputCacheHandle {
     pub(crate) async fn finish(self) {
         tracing::trace!("Waiting for InputCache to finish");
         drop(self.tx);
-        
+
         self.handle
             .await
             .expect("Failed to join task")
@@ -80,11 +84,19 @@ struct InputCache {
     generator_channel: (InputGeneratorReplyTx, InputGeneratorReplyRx),
 }
 
+pub(crate) const FILES_INPUTS: &str = "files";
+pub(crate) const CARGO_TARGETS_INPUTS: &str = "cargo_targets";
+pub(crate) const TOP_DIRECTORY_INPUTS: &str = "top:directory";
+
 impl InputCache {
-    pub(crate) fn new(files: Vec<PathBuf>, rx: InputQueryRx) -> Self {
+    pub(crate) fn new(current_directory: PathBuf, files: Vec<PathBuf>, rx: InputQueryRx) -> Self {
         let inputs = {
             let mut i = HashMap::new();
-            i.insert("files".to_string(), InputMapEntry::Cached(Ok(files)));
+            i.insert(FILES_INPUTS.to_string(), InputMapEntry::Cached(Ok(files)));
+            i.insert(
+                TOP_DIRECTORY_INPUTS.to_string(),
+                InputMapEntry::Cached(Ok(vec![current_directory])),
+            );
             i
         };
 
@@ -127,13 +139,33 @@ impl InputCache {
                 let qn = query_name.clone();
 
                 match query_name.as_str() {
-                    "files" => unreachable!(),
-                    "cargo_targets" => {
+                    FILES_INPUTS => unreachable!("Set from the start"),
+                    TOP_DIRECTORY_INPUTS => unreachable!("Set at the start"),
+                    CARGO_TARGETS_INPUTS => {
+                        let files = {
+                            let Some(InputMapEntry::Cached(Ok(tmp))) =
+                                self.inputs.get(FILES_INPUTS)
+                            else {
+                                unreachable!("Set at the start");
+                            };
+                            tmp.clone()
+                        };
+                        let top_directory = {
+                            let Some(InputMapEntry::Cached(Ok(tmp))) =
+                                self.inputs.get(TOP_DIRECTORY_INPUTS)
+                            else {
+                                unreachable!("Set at the start");
+                            };
+                            tmp.first().unwrap().clone()
+                        };
+
                         tokio::spawn(async move {
+                            let targets = cargo::find_cargo_targets(top_directory, &files).await;
+
                             generator_tx
                                 .send(GeneratorReply {
                                     input: qn,
-                                    data: Err("Not implemented yet!".to_string()),
+                                    data: Ok(targets),
                                 })
                                 .await
                                 .expect("Failed to send internal message");
@@ -178,9 +210,12 @@ impl InputCache {
 }
 
 #[tracing::instrument]
-pub(crate) fn setup_input_cache(files: Vec<PathBuf>) -> InputCacheHandle {
+pub(crate) fn setup_input_cache(
+    current_directory: PathBuf,
+    files: Vec<PathBuf>,
+) -> InputCacheHandle {
     let (tx, rx) = tokio::sync::mpsc::channel(10);
-    let mut cache = InputCache::new(files, rx);
+    let mut cache = InputCache::new(current_directory, files, rx);
 
     let handle = tokio::spawn(async move {
         let _span = tracing::span!(tracing::Level::TRACE, "input_collector");

@@ -13,16 +13,16 @@ pub struct Error {
 
 /// Note: this is intentionally not public.
 enum ErrorKind {
+    FileError {
+        message: String,
+        error: std::io::Error,
+    },
     InputGeneratorError {
         input_query: String,
         message: String,
     },
     InvalidConfiguration {
         message: String,
-    },
-    ProcessFailed {
-        command: String,
-        error: std::io::Error,
     },
     UnexpectedExitCode {
         command: String,
@@ -41,6 +41,9 @@ impl From<ErrorKind> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self.kind {
+            ErrorKind::FileError { message, error } => {
+                write!(f, "{message}: {error}")
+            }
             ErrorKind::InputGeneratorError {
                 message,
                 input_query,
@@ -49,9 +52,6 @@ impl fmt::Display for Error {
             }
             ErrorKind::InvalidConfiguration { message } => {
                 write!(f, "Invalid configuration: {message}")
-            }
-            ErrorKind::ProcessFailed { command, error } => {
-                write!(f, "Process {command} failed: {error}")
             }
             ErrorKind::UnexpectedExitCode {
                 command,
@@ -75,6 +75,13 @@ impl std::error::Error for Error {}
 
 /// `pub(crate)` constructors, visible only in this crate.
 impl Error {
+    pub(crate) fn new_io_error(message: &str, error: std::io::Error) -> Self {
+        ErrorKind::FileError {
+            message: message.to_string(),
+            error,
+        }
+        .into()
+    }
     pub(crate) fn new_input_generator(input_query: String, message: String) -> Self {
         ErrorKind::InputGeneratorError {
             input_query,
@@ -85,18 +92,7 @@ impl Error {
     pub(crate) fn new_invalid_configuration(message: String) -> Self {
         ErrorKind::InvalidConfiguration { message }.into()
     }
-    pub(crate) fn new_process_failed(command: &str, error: std::io::Error) -> Self {
-        ErrorKind::ProcessFailed {
-            command: command.to_string(),
-            error,
-        }
-        .into()
-    }
-    pub(crate) fn new_unexpected_exit_code(
-        command: &str,
-        expected: i32,
-        actual: i32,
-    ) -> Self {
+    pub(crate) fn new_unexpected_exit_code(command: &str, expected: i32, actual: i32) -> Self {
         ErrorKind::UnexpectedExitCode {
             command: command.to_string(),
             expected,

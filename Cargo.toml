@@ -27,3 +27,4 @@ suspicious = "warn"
 
 [workspace.dependencies]
 beautytips = { version = "=0.1.0", path = "crates/beautytips", default_features = false }
+glob = "0.3.1"

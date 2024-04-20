@@ -39,7 +39,9 @@ impl vcs::Vcs for Jj {
             .current_dir(current_directory)
             .output()
             .await
-            .map_err(|e| crate::Error::new_process_failed(self.name(), e))?;
+            .map_err(|e| {
+                crate::Error::new_io_error(&format!("Could not run {}", self.name()), e)
+            })?;
 
         tracing::trace!("changed files result: {output:?}");
 
