@@ -43,12 +43,14 @@ impl vcs::Vcs for Jj {
 
         tracing::trace!("changed files result: {output:?}");
 
-        if output.status.code() != Some(0) {
-            return Err(crate::Error::new_unexpected_exit_code(
-                self.name(),
-                0,
-                output.status.code(),
-            ));
+        if let Some(actual) = output.status.code() {
+            if actual != 0 {
+                return Err(crate::Error::new_unexpected_exit_code(
+                    self.name(),
+                    0,
+                    actual,
+                ));
+            }
         }
 
         Ok(output

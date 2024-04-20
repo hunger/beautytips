@@ -39,6 +39,8 @@ pub use actions::ActionResult;
 pub trait Reporter {
     fn report_start(&mut self, action_id: ActionId);
     fn report_done(&mut self, action_id: ActionId, result: ActionResult);
+
+    fn finish(&mut self);
 }
 
 /// Collect the input files based on `Context` and configuration
@@ -77,6 +79,7 @@ async fn handle_reports(mut reporter: Box<dyn Reporter>, mut rx: ActionUpdateRec
         }
     }
 
+    reporter.finish();
     tracing::trace!("Local reporter task is done");
 }
 

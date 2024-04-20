@@ -5,23 +5,14 @@ use anyhow::Result;
 use tracing_subscriber::prelude::*;
 
 mod arg_parse;
-
-struct DebugReporter {}
-
-impl beautytips::Reporter for DebugReporter {
-    fn report_start(&mut self, action_id: beautytips::ActionId) {
-        println!("STARTED: {action_id}");
-    }
-
-    fn report_done(&mut self, action_id: beautytips::ActionId, result: beautytips::ActionResult) {
-        println!("DONE   : {action_id} => {result:?}");
-    }
-}
+mod reporter;
 
 fn main() -> Result<()> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
-    tracing_subscriber::registry().with(stdout_log).init();
+    tracing_subscriber::registry().with(stdout_log
+        .with_filter(tracing_subscriber::filter::LevelFilter::WARN)
+    ).init();
 
     let actions = vec![
         beautytips::ActionDefinition {
@@ -70,7 +61,7 @@ fn main() -> Result<()> {
         },
     ];
 
-    let reporter = DebugReporter {};
+    let reporter = reporter::Reporter::default();
 
     beautytips::run(
         std::env::current_dir()?,

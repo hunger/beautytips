@@ -86,6 +86,19 @@ async fn run_single_action(
         .await
         .expect("Failed to send start message to reporter");
 
+    if std::env::var("SKIP").unwrap_or_default().split('\n').any(|s| s == action.id.to_string()) {
+        tracing::trace!("Skipping '{}'", action.id);
+        report(
+            &sender,
+            ActionUpdate::Done {
+                action_id: action.id.clone(),
+                result: ActionResult::Skipped,
+            },
+        )
+        .await;
+        return Ok(());
+    }
+
     let Some(command) = action.command.first() else {
         tracing::error!("No command in action '{}'", action.id);
         let message = format!("No command defined in action '{}'", action.id);
@@ -120,6 +133,7 @@ async fn run_single_action(
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut invalid_exit_code = false;
 
     loop {
         let output = tokio::process::Command::new(command)
@@ -138,39 +152,43 @@ async fn run_single_action(
 
         if output.status.code() != Some(action.expected_exit_code) {
             tracing::debug!("Unexpected return code for action '{}'", action.id);
-            let err = crate::Error::new_unexpected_exit_code(command, 0, output.status.code());
-            report(
-                &sender,
-                ActionUpdate::Done {
-                    action_id: action.id.clone(),
-                    result: ActionResult::Error {
-                        message: err.to_string(),
-                    },
-                },
-            )
-            .await;
-            return Ok(()); // Not really an error: We expected this
+            invalid_exit_code = true;
         }
 
         stdout.extend_from_slice(&output.stdout);
-        stdout.push(b'\n');
+        if !stdout.ends_with(b"\n") {
+            stdout.push(b'\n');
+        }
         stderr.extend_from_slice(&output.stderr);
-        stderr.push(b'\n');
+        if !stderr.ends_with(b"\n") {
+            stderr.push(b'\n');
+        }
 
         if args.increment() {
             break;
         }
     }
 
-    tracing::trace!("Success running '{}'", action.id);
-    report(
-        &sender,
-        ActionUpdate::Done {
-            action_id: action.id.clone(),
-            result: ActionResult::Ok { stdout, stderr },
-        },
-    )
-    .await;
+    if invalid_exit_code {
+        report(
+            &sender,
+            ActionUpdate::Done {
+                action_id: action.id.clone(),
+                result: ActionResult::Warn { stdout, stderr },
+            },
+        )
+        .await;
+    } else {
+        tracing::trace!("Success running '{}'", action.id);
+        report(
+            &sender,
+            ActionUpdate::Done {
+                action_id: action.id.clone(),
+                result: ActionResult::Ok { stdout, stderr },
+            },
+        )
+        .await;
+    }
     Ok(())
 }
 

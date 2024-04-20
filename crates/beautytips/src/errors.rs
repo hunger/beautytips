@@ -27,7 +27,7 @@ enum ErrorKind {
     UnexpectedExitCode {
         command: String,
         expected: i32,
-        actual: Option<i32>,
+        actual: i32,
     },
 }
 
@@ -95,7 +95,7 @@ impl Error {
     pub(crate) fn new_unexpected_exit_code(
         command: &str,
         expected: i32,
-        actual: Option<i32>,
+        actual: i32,
     ) -> Self {
         ErrorKind::UnexpectedExitCode {
             command: command.to_string(),

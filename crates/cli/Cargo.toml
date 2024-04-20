@@ -26,5 +26,5 @@ workspace = true
 anyhow = "1.0.81"
 beautytips = { workspace = true }
 clap = { version = "4.5.4", features = ["cargo"] }
-termcolor = "1.4.1"
+termion = "3.0.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
