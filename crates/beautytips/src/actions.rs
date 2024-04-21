@@ -6,7 +6,8 @@ use std::{fmt::Display, path::PathBuf};
 mod args;
 mod inputs;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
 
 impl ActionId {
@@ -16,13 +17,13 @@ impl ActionId {
     ///
     /// Raise an invaliv configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
-    pub fn new(input: &str) -> crate::Result<Self> {
-        if input.chars().any(|c| !c.is_ascii_lowercase() && c != '_') {
+    pub fn new(input: String) -> crate::Result<Self> {
+        if input.chars().any(|c| !c.is_ascii_lowercase() && c != '_' && !c.is_ascii_digit()) {
             Err(crate::Error::new_invalid_configuration(format!(
                 "{input} is not a valid action id"
             )))
         } else {
-            Ok(ActionId(input.to_string()))
+            Ok(ActionId(input))
         }
     }
 }
@@ -30,6 +31,14 @@ impl ActionId {
 impl Display for ActionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<String> for ActionId {
+    type Error = crate::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        ActionId::new(value)
     }
 }
 

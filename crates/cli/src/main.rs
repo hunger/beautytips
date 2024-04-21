@@ -3,14 +3,18 @@
 
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tracing_subscriber::prelude::*;
 
 mod arg_parse;
+mod config;
 mod reporter;
 
 fn main() -> Result<()> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
+
+    let config = config::load_config().context("Failed to read configuration file")?;
+    eprintln!("Configuration dump:\n{config:?}");
 
     tracing_subscriber::registry()
         .with(stdout_log.with_filter(tracing_subscriber::filter::LevelFilter::WARN))
@@ -18,7 +22,7 @@ fn main() -> Result<()> {
 
     let actions = vec![
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("echo_test").unwrap(),
+            id: beautytips::ActionId::new("echo_test".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e \"baz\"; sleep 2; exit 0"]
                 .iter()
                 .map(ToString::to_string)
@@ -27,7 +31,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("fail").unwrap(),
+            id: beautytips::ActionId::new("fail".to_string()).unwrap(),
             command: [
                 "/bin/sh",
                 "-c",
@@ -40,7 +44,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("file").unwrap(),
+            id: beautytips::ActionId::new("file".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -49,7 +53,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("files").unwrap(),
+            id: beautytips::ActionId::new("files".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -58,7 +62,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("foobar").unwrap(),
+            id: beautytips::ActionId::new("foobar".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{foobar...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -67,7 +71,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("file_filtered").unwrap(),
+            id: beautytips::ActionId::new("file_filtered".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -81,8 +85,17 @@ fn main() -> Result<()> {
             .collect(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("cargo_targets").unwrap(),
+            id: beautytips::ActionId::new("cargo_targets".to_string()).unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{cargo_targets...}}"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            expected_exit_code: 0,
+            input_filters: HashMap::default(),
+        },
+        beautytips::ActionDefinition {
+            id: beautytips::ActionId::new("cargo_fmt".to_string()).unwrap(),
+            command: ["cargo", "fmt", "--check", "-p", "{{cargo_targets}}", "--", "--color=never"]
                 .iter()
                 .map(ToString::to_string)
                 .collect(),

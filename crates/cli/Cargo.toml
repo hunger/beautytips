@@ -26,6 +26,9 @@ workspace = true
 anyhow = "1.0.81"
 beautytips = { workspace = true }
 clap = { version = "4.5.4", features = ["cargo"] }
+dirs = "5.0.1"
 glob = { workspace = true }
+serde = { version = "1.0.199", features = ["derive"] }
 termion = "3.0.0"
+toml = { version = "0.8.12", features = ["preserve_order"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
