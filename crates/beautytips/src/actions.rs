@@ -1,50 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::{fmt::Display, path::PathBuf};
+use std::path::PathBuf;
 
 mod args;
 mod inputs;
 
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "String", expecting = "an action id")]
-pub struct ActionId(String);
-
-impl ActionId {
-    /// Create a new `ActionId`
-    ///
-    /// # Errors
-    ///
-    /// Raise an invaliv configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn new(input: String) -> crate::Result<Self> {
-        if input.chars().any(|c| !c.is_ascii_lowercase() && c != '_' && !c.is_ascii_digit()) {
-            Err(crate::Error::new_invalid_configuration(format!(
-                "{input} is not a valid action id"
-            )))
-        } else {
-            Ok(ActionId(input))
-        }
-    }
-}
-
-impl Display for ActionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl TryFrom<String> for ActionId {
-    type Error = crate::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        ActionId::new(value)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ActionDefinition {
-    pub id: ActionId,
+    pub id: String,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
@@ -62,10 +26,10 @@ pub enum ActionResult {
 #[derive(Clone, Debug)]
 pub(crate) enum ActionUpdate {
     Started {
-        action_id: ActionId,
+        action_id: String,
     },
     Done {
-        action_id: ActionId,
+        action_id: String,
         result: ActionResult,
     },
 }

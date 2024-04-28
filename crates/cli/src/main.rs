@@ -22,7 +22,7 @@ fn main() -> Result<()> {
 
     let actions = vec![
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("echo_test".to_string()).unwrap(),
+            id: "echo_test".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e \"baz\"; sleep 2; exit 0"]
                 .iter()
                 .map(ToString::to_string)
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("fail".to_string()).unwrap(),
+            id: "fail".parse().unwrap(),
             command: [
                 "/bin/sh",
                 "-c",
@@ -44,7 +44,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("file".to_string()).unwrap(),
+            id: "file".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("files".to_string()).unwrap(),
+            id: "files".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("foobar".to_string()).unwrap(),
+            id: "foobar".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{foobar...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -71,7 +71,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("file_filtered".to_string()).unwrap(),
+            id: "file_filtered".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{files...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
             .collect(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("cargo_targets".to_string()).unwrap(),
+            id: "cargo_targets".parse().unwrap(),
             command: ["/bin/sh", "-c", "echo -e {{cargo_targets...}}"]
                 .iter()
                 .map(ToString::to_string)
@@ -94,7 +94,7 @@ fn main() -> Result<()> {
             input_filters: HashMap::default(),
         },
         beautytips::ActionDefinition {
-            id: beautytips::ActionId::new("cargo_fmt".to_string()).unwrap(),
+            id: "cargo_fmt".parse().unwrap(),
             command: ["cargo", "fmt", "--check", "-p", "{{cargo_targets}}", "--", "--color=never"]
                 .iter()
                 .map(ToString::to_string)

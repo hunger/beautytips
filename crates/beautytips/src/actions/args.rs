@@ -63,7 +63,7 @@ impl Args {
     pub(crate) fn print(&self) -> String {
         self.0
             .iter()
-            .map(|a| shell_escape::escape(a.current().to_string_lossy()))
+            .map(|a| shell_words::quote(&a.current().to_string_lossy()).to_string())
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -219,7 +219,7 @@ pub(crate) async fn parse_arg(
                 if is_array {
                     let total = paths
                         .iter()
-                        .map(|p| shell_escape::escape(p.to_string_lossy()))
+                        .map(|p| shell_words::quote(&p.to_string_lossy()).to_string())
                         .collect::<Vec<_>>()
                         .join(" ");
                     for a in &mut extended_arg {
@@ -229,7 +229,7 @@ pub(crate) async fn parse_arg(
                     let mut new_extended_arg = Vec::with_capacity(extended_arg.len() * paths.len());
 
                     for p in &paths {
-                        let extension = shell_escape::escape(p.to_string_lossy());
+                        let extension = shell_words::quote(&p.to_string_lossy()).to_string();
                         for a in &extended_arg {
                             new_extended_arg.push(a.clone() + &extension);
                         }

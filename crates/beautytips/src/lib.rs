@@ -9,7 +9,7 @@ pub(crate) mod vcs;
 use std::path::PathBuf;
 
 use actions::ActionUpdateReceiver;
-pub use actions::{ActionDefinition, ActionId};
+pub use actions::ActionDefinition;
 pub use errors::{Error, Result};
 
 #[derive(Clone, Debug, Default)]
@@ -37,8 +37,8 @@ pub use actions::ActionResult;
 
 /// Report results of an Action
 pub trait Reporter {
-    fn report_start(&mut self, action_id: ActionId);
-    fn report_done(&mut self, action_id: ActionId, result: ActionResult);
+    fn report_start(&mut self, action_id: String);
+    fn report_done(&mut self, action_id: String, result: ActionResult);
 
     fn finish(&mut self);
 }

@@ -47,13 +47,13 @@ fn to_str(input: &[u8]) -> String {
 }
 
 impl beautytips::Reporter for Reporter {
-    fn report_start(&mut self, action_id: beautytips::ActionId) {
-        self.running.push(action_id.to_string());
+    fn report_start(&mut self, action_id: String) {
+        self.running.push(action_id);
 
         self.print_status();
     }
 
-    fn report_done(&mut self, action_id: beautytips::ActionId, result: beautytips::ActionResult) {
+    fn report_done(&mut self, action_id: String, result: beautytips::ActionResult) {
         self.clear_status();
 
         self.running = self
