@@ -13,7 +13,7 @@ mod reporter;
 fn main() -> Result<()> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
-    let config = config::load_config().context("Failed to read configuration file")?;
+    let config = config::load_user_config()?;
     eprintln!("Configuration dump:\n{config:?}");
 
     tracing_subscriber::registry()
@@ -95,10 +95,18 @@ fn main() -> Result<()> {
         },
         beautytips::ActionDefinition {
             id: "cargo_fmt".parse().unwrap(),
-            command: ["cargo", "fmt", "--check", "-p", "{{cargo_targets}}", "--", "--color=never"]
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
+            command: [
+                "cargo",
+                "fmt",
+                "--check",
+                "-p",
+                "{{cargo_targets}}",
+                "--",
+                "--color=never",
+            ]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
             expected_exit_code: 0,
             input_filters: HashMap::default(),
         },

@@ -1,0 +1,9 @@
+[[actions]]
+name = "check_cargo_fmt"
+command = "cargo fmt --all --check"
+inputs.files = [ "**/*.rs" ]
+
+[[actions]]
+name = "fix_cargo_fmt"
+command = "cargo fmt --all"
+inputs.files = [ "**/*.rs" ]

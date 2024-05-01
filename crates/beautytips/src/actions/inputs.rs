@@ -5,7 +5,6 @@ use std::{collections::HashMap, path::PathBuf};
 
 mod cargo;
 
-
 pub type InputFilters = HashMap<String, Vec<glob::Pattern>>;
 
 pub(crate) struct InputQueryMessage {
