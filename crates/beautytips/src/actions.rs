@@ -6,12 +6,30 @@ use std::path::PathBuf;
 mod args;
 mod inputs;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct ActionDefinition {
     pub id: String,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
+}
+
+impl PartialOrd for ActionDefinition {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.id.partial_cmp(&other.id)
+    }
+}
+
+impl PartialEq for ActionDefinition {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&self.id)
+    }
+}
+
+impl Ord for ActionDefinition {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
 }
 
 #[derive(Clone, Debug)]

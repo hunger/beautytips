@@ -101,7 +101,8 @@ struct TomlConfiguration {
 #[derive(Clone, Debug, Default)]
 pub struct Configuration {
     action_groups: HashMap<String, Vec<String>>,
-    actions: HashMap<String, beautytips::ActionDefinition>,
+    actions: Vec<beautytips::ActionDefinition>,
+    action_map: HashMap<String, usize>,
 }
 
 fn merge_action_definition(
@@ -122,11 +123,11 @@ impl Configuration {
             Remove(T),
         }
 
-        let actions: HashMap<String, beautytips::ActionDefinition> = other
+        let mut actions: Vec<beautytips::ActionDefinition> = other
             .actions
             .iter()
-            .map(|(id, definition)| {
-                if let Some(sa) = self.actions.get(id).clone() {
+            .map(|definition| {
+                if let Some(sa) = self.action(&definition.id).clone() {
                     if definition.command.len() == 1
                         && definition.command.first() == Some(&"/dev/null".to_string())
                     {
@@ -138,17 +139,17 @@ impl Configuration {
                     ActionState::Add(definition.clone())
                 }
             })
-            .chain(self.actions.iter().filter_map(|(id, definition)| {
-                if other.actions.contains_key(id) {
+            .chain(self.actions.iter().filter_map(|definition| {
+                if other.action(&definition.id).is_some() {
                     None
                 } else {
                     Some(ActionState::Add(definition.clone()))
                 }
             }))
             .filter_map(|ad| match ad {
-                ActionState::Add(d) => Some(Ok((d.id.clone(), d))),
+                ActionState::Add(d) => Some(Ok(d)),
                 ActionState::Change(sd, od) => {
-                    Some(merge_action_definition(&sd, &od).map(|d| (d.id.clone(), d)))
+                    Some(merge_action_definition(&sd, &od))
                 }
                 ActionState::Remove(d) => {
                     if d.expected_exit_code != 0 || !d.input_filters.is_empty() {
@@ -163,6 +164,9 @@ impl Configuration {
             })
             .collect::<anyhow::Result<_>>()?;
 
+        actions.sort();
+        let action_map: HashMap<_, _> = actions.iter().enumerate().map(|(index, d)| (d.id.clone(), index)).collect();
+
         let action_groups = self
             .action_groups
             .drain()
@@ -170,7 +174,7 @@ impl Configuration {
                 (
                     k,
                     v.into_iter()
-                        .filter(|v| !actions.contains_key(v.as_str()))
+                        .filter(|v| !action_map.contains_key(v.as_str()))
                         .collect::<Vec<_>>(),
                 )
             })
@@ -196,11 +200,12 @@ impl Configuration {
         Ok(Self {
             action_groups,
             actions,
+            action_map,
         })
     }
 
     pub fn action<'a, 'b>(&'a self, name: &'b str) -> Option<&'a beautytips::ActionDefinition> {
-        self.actions.get(name)
+        self.action_map.get(name).and_then(|index| self.actions.get(*index))
     }
 
     pub fn action_count(&self) -> usize {
@@ -224,10 +229,10 @@ impl TryFrom<&str> for Configuration {
         let toml_config: TomlConfiguration =
             toml::from_str(value).context(format!("Failed to parse toml"))?;
 
-        let actions = toml_config
+        let mut actions: Vec<_> = toml_config
             .actions
             .into_iter()
-            .try_fold(HashMap::new(), |mut acc, ad| {
+            .map(|ad| {
                 let id = ad.name.to_string();
 
                 let command = shell_words::split(ad.command.trim()).context(format!(
@@ -258,23 +263,29 @@ impl TryFrom<&str> for Configuration {
                     })
                     .context("Parsing input filters for action '{id}'")?;
 
-                let old = acc.insert(
-                    id.clone(),
+                Ok(
                     beautytips::ActionDefinition {
                         id: id.clone(),
                         command,
                         expected_exit_code: ad.expected_exit_code,
                         input_filters,
                     },
-                );
+                )
+            }).collect::<anyhow::Result<_>>()?;
 
-                if old.is_some() {
-                    return Err(anyhow::anyhow!(format!(
-                        "Action '{id}' defined twice in one config location"
-                    )));
+        actions.sort();
+
+        {
+            let mut current = None;
+
+            for d in &actions {
+                if Some(&d.id) == current {
+                    return Err(anyhow::anyhow!(format!("Duplicate action \'{}\' found", d.id)));
                 }
-                Ok(acc)
-            })?;
+                current = Some(&d.id);
+            }
+        }
+        let action_map: HashMap<_, _> = actions.iter().enumerate().map(|(index, d)| (d.id.clone(), index)).collect();
 
         let action_groups = toml_config
             .action_groups
@@ -304,6 +315,7 @@ impl TryFrom<&str> for Configuration {
         Ok(Configuration {
             action_groups,
             actions,
+            action_map,
         })
     }
 }
@@ -316,6 +328,29 @@ impl TryFrom<&Path> for Configuration {
             .context(format!("Failed to read toml file {value:?}"))?;
 
         Configuration::try_from(config_data.as_str()).context("Failed to parse toml file {value:?}")
+    }
+}
+
+struct ActionDefinitionIterator<'a> {
+    actions: &'a[beautytips::ActionDefinition],
+    filter : &'a dyn Fn(&'a beautytips::ActionDefinition) -> bool,
+    current_item: usize,
+}
+
+impl<'a> Iterator for ActionDefinitionIterator<'a> {
+    type Item = &'a beautytips::ActionDefinition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_item < self.actions.len() {
+            let cur = self.current_item;
+            self.current_item += 1;
+
+            let cur_item =  unsafe { self.actions.get_unchecked(cur) };
+            if (self.filter)(cur_item) {
+                return Some(cur_item);
+            }
+        }
+        None
     }
 }
 
