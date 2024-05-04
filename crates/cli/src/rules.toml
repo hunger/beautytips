@@ -1,9 +1,43 @@
 [[actions]]
 name = "check_cargo_fmt"
-command = "cargo fmt --all --check"
-inputs.files = [ "**/*.rs" ]
+command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
 name = "fix_cargo_fmt"
-command = "cargo fmt --all"
-inputs.files = [ "**/*.rs" ]
+command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "test_echo"
+command = "/bin/sh -c \"echo -e \\\"baz\\\"; sleep 2; exit 0\""
+
+[[actions]]
+name = "test_fail"
+command = "/bin/sh -c \"echo -e \\\"This will fail\\\"; sleep 5; exit 10\""
+exit-code = 1
+
+[[actions]]
+name = "test_file"
+command = "/bin/sh -c \"echo -e {{files}}\""
+
+[[actions]]
+name = "test_files"
+command = "/bin/sh -c \"echo -e {{files...}}\""
+
+[[actions]]
+name = "test_foobar"
+command = "/bin/sh -c \"echo -e {{foobar...}}\""
+
+[[actions]]
+name = "test_files_filtered"
+command = "/bin/sh -c \"echo -e {{files...}}\""
+inputs.file = [ "*.ignoreme" ]
+
+[[actions]]
+name = "test_cargo_targets"
+command = "/bin/sh -c \"echo -e {{cargo_targets...}}\""
+
+[[action_groups]]
+name = "test_me"
+actions = ["test_echo", "test_fail", "test_files", "test_foobar", "test_files_filtered", "test_cargo_targets"]
