@@ -8,7 +8,7 @@ pub(crate) mod vcs;
 
 use std::path::PathBuf;
 
-pub use actions::ActionDefinition;
+pub use actions::{ActionDefinition, ActionDefinitionIterator};
 use actions::ActionUpdateReceiver;
 pub use errors::{Error, Result};
 
@@ -129,7 +129,7 @@ async fn handle_reports(mut reporter: Box<dyn Reporter>, mut rx: ActionUpdateRec
 pub fn run<'a>(
     current_directory: PathBuf,
     inputs: InputFiles,
-    actions: &'a [actions::ActionDefinition],
+    actions: actions::ActionDefinitionIterator<'a>,
     reporter: Box<dyn Reporter>,
 ) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
@@ -147,8 +147,8 @@ pub fn run<'a>(
             // as static.
             let actions = unsafe {
                 std::mem::transmute::<
-                    &'a [actions::ActionDefinition],
-                    &'static [actions::ActionDefinition],
+                    actions::ActionDefinitionIterator<'a>,
+                    actions::ActionDefinitionIterator<'static>,
                 >(actions)
             };
 

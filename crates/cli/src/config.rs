@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::{collections::HashMap, fmt::Display, path::Path};
 
@@ -328,6 +329,11 @@ impl Configuration {
             .and_then(|index| self.actions.get(*index))
     }
 
+    pub fn action_group<'a>(&'a self, name: &str) -> Option<beautytips::ActionDefinitionIterator<'a>> {
+        let indices = self.action_groups.get(name)?.iter().copied().collect();
+        Some(beautytips::ActionDefinitionIterator::new(&self.actions, indices))
+    }
+
     pub fn action_count(&self) -> usize {
         self.actions.len()
     }
@@ -461,29 +467,6 @@ impl TryFrom<&Path> for Configuration {
             .context(format!("Failed to read toml file {value:?}"))?;
 
         Configuration::try_from(config_data.as_str()).context("Failed to parse toml file {value:?}")
-    }
-}
-
-struct ActionDefinitionIterator<'a> {
-    actions: &'a [beautytips::ActionDefinition],
-    filter: &'a dyn Fn(&'a beautytips::ActionDefinition) -> bool,
-    current_item: usize,
-}
-
-impl<'a> Iterator for ActionDefinitionIterator<'a> {
-    type Item = &'a beautytips::ActionDefinition;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.current_item < self.actions.len() {
-            let cur = self.current_item;
-            self.current_item += 1;
-
-            let cur_item = unsafe { self.actions.get_unchecked(cur) };
-            if (self.filter)(cur_item) {
-                return Some(cur_item);
-            }
-        }
-        None
     }
 }
 
@@ -675,6 +658,10 @@ command = "barfoo x y z"
 [[action_groups]]
 name = "test"
 actions = [ "test1", "test3_o", "test3_b" ]
+
+[[action_groups]]
+name = "test_group"
+actions = [ "test3_b" ]
 "#;
         let other: Configuration = other.try_into().unwrap();
         eprintln!("Other: {other:?}");
@@ -685,6 +672,10 @@ actions = [ "test1", "test3_o", "test3_b" ]
         assert!(merge.action("test1").is_some());
         assert!(merge.action("test3_b").is_some());
         assert!(merge.action("test3_o").is_some());
-        assert_eq!(merge.action_group_count(), 1);
+        assert_eq!(merge.action_group_count(), 2);
+        let mut it = merge.action_group("test_group").unwrap();
+        assert_eq!(it.next().unwrap().id.as_str(), "test3_b");
+        assert!(it.next().is_none());
+        
     }
 }

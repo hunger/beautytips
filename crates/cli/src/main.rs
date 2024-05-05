@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
 use tracing_subscriber::prelude::*;
 
@@ -20,14 +18,14 @@ fn main() -> Result<()> {
         .with(stdout_log.with_filter(tracing_subscriber::filter::LevelFilter::WARN))
         .init();
 
-    let actions = vec![];
+    let actions = config.action_group("test").unwrap();
 
     let reporter = reporter::Reporter::default();
 
     beautytips::run(
         std::env::current_dir()?,
         beautytips::InputFiles::Vcs(beautytips::VcsInput::default()),
-        &actions,
+        actions,
         Box::new(reporter),
     )?;
 

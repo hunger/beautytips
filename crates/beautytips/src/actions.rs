@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 mod args;
 mod inputs;
@@ -22,13 +22,47 @@ impl PartialOrd for ActionDefinition {
 
 impl PartialEq for ActionDefinition {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&self.id)
+        self.id.eq(&other.id)
     }
 }
 
 impl Ord for ActionDefinition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id)
+    }
+}
+
+#[derive(Debug)]
+pub struct ActionDefinitionIterator<'a> {
+    actions: &'a [ActionDefinition],
+    indices: HashSet<usize>,
+    current_item: usize,
+}
+
+impl<'a> ActionDefinitionIterator<'a> {
+    pub fn new(actions: &'a [ActionDefinition], indices: HashSet<usize>) -> Self {
+        Self {
+            actions,
+            indices,
+            current_item: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for ActionDefinitionIterator<'a> {
+    type Item = &'a ActionDefinition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_item < self.actions.len() {
+            let cur = self.current_item;
+            self.current_item += 1;
+
+            if self.indices.contains(&cur) {
+                let cur_item = unsafe { self.actions.get_unchecked(cur) };
+                return Some(cur_item);
+            }
+        }
+        None
     }
 }
 
@@ -207,7 +241,7 @@ async fn run_single_action(
 pub async fn run(
     current_directory: PathBuf,
     sender: ActionUpdateSender,
-    actions: &'static [ActionDefinition],
+    mut actions: ActionDefinitionIterator<'static>,
     files: Vec<PathBuf>,
 ) -> crate::Result<()> {
     tracing::trace!("Starting actions");
