@@ -9,24 +9,45 @@ mod config;
 mod reporter;
 
 fn main() -> Result<()> {
+    let command = arg_parse::command().context("Failed to parse command line arguments")?;
+
+    let max_level = match command.debug_level {
+        0 => tracing_subscriber::filter::LevelFilter::ERROR,
+        1 => tracing_subscriber::filter::LevelFilter::WARN,
+        2 => tracing_subscriber::filter::LevelFilter::INFO,
+        3 => tracing_subscriber::filter::LevelFilter::DEBUG,
+        _ => tracing_subscriber::filter::LevelFilter::TRACE,
+    };
+
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     let config = config::load_user_configuration()?;
 
     tracing_subscriber::registry()
-        .with(stdout_log.with_filter(tracing_subscriber::filter::LevelFilter::TRACE))
+        .with(stdout_log.with_filter(max_level))
         .init();
 
-    let actions = config.action_group("test_me").unwrap();
+    match command.command {
+        arg_parse::Command::ListFiles { source } => {
+            let (root_dir, files) = beautytips::collect_input_files(std::env::current_dir()?, source)?;
+            println!("root directory: {root_dir:?}");
+            for f in &files {
+                println!("{f:?}");
+            };
+            Ok(())
+        }
+    }
 
-    let reporter = reporter::Reporter::default();
+    // let actions = config.action_group("test_me").unwrap();
 
-    beautytips::run(
-        std::env::current_dir()?,
-        beautytips::InputFiles::Vcs(beautytips::VcsInput::default()),
-        actions,
-        Box::new(reporter),
-    )?;
+    // let reporter = reporter::Reporter::default();
 
-    Ok(())
+    // beautytips::run(
+    //     std::env::current_dir()?,
+    //     beautytips::InputFiles::Vcs(beautytips::VcsInput::default()),
+    //     actions,
+    //     Box::new(reporter),
+    // )?;
+
+    // Ok(())
 }

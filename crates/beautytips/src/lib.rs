@@ -8,8 +8,8 @@ pub(crate) mod vcs;
 
 use std::path::PathBuf;
 
-pub use actions::{ActionDefinition, ActionDefinitionIterator};
 use actions::ActionUpdateReceiver;
+pub use actions::{ActionDefinition, ActionDefinitionIterator};
 pub use errors::{Error, Result};
 
 #[derive(Clone, Debug, Default)]
@@ -25,6 +25,8 @@ pub struct VcsInput {
 #[derive(Clone, Debug)]
 pub enum InputFiles {
     Vcs(VcsInput),
+    FileList(Vec<PathBuf>),
+    AllFiles(PathBuf),
 }
 
 impl Default for InputFiles {
@@ -37,7 +39,7 @@ pub use actions::ActionResult;
 
 /// Report results of an Action
 pub trait Reporter {
-    fn report_start(&mut self, action_id: String);
+    fn report_start(&mut self, taction_id: String);
     fn report_done(&mut self, action_id: String, result: ActionResult);
 
     fn finish(&mut self);
@@ -49,7 +51,7 @@ pub trait Reporter {
 ///
 /// Mostly `InvalidConfiguration`, but others are possible when data collection fails.
 #[tracing::instrument]
-async fn collect_input_files(
+async fn collect_input_files_impl(
     current_directory: PathBuf,
     inputs: InputFiles,
 ) -> Result<(PathBuf, Vec<PathBuf>)> {
@@ -57,6 +59,15 @@ async fn collect_input_files(
 
     let (root_directory, files) = match inputs {
         InputFiles::Vcs(config) => vcs::find_files_changed(current_directory, config).await,
+        InputFiles::FileList(files) => Ok((current_directory, files)),
+        InputFiles::AllFiles(base_dir) => {
+            let files = ignore::WalkBuilder::new(base_dir.clone())
+                .filter_entry(|d| !d.path().is_dir())
+                .build()
+                .map(|d| d.map(ignore::DirEntry::into_path))
+                .collect::<Result<Vec<_>, _>>().map_err(|e| errors::Error::new_directory_walk(base_dir.clone(), e))?;
+            Ok((base_dir, files))
+        }
     }?;
     assert!(root_directory.is_absolute());
 
@@ -116,6 +127,32 @@ async fn handle_reports(mut reporter: Box<dyn Reporter>, mut rx: ActionUpdateRec
     tracing::trace!("Local reporter task is done");
 }
 
+/// Collect files only
+///
+/// # Errors
+///
+/// Mostle `InvalidConfiguration`, but others are possible when data collection fails.
+///
+/// # Panics
+///
+/// Panics whenever tokio decides to panic.
+#[tracing::instrument]
+pub fn collect_input_files<'a>(
+    current_directory: PathBuf,
+    inputs: InputFiles,
+) -> Result<(PathBuf, Vec<PathBuf>)> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime setup failed")
+        .block_on(async move {
+            let _span = tracing::span!(tracing::Level::TRACE, "tokio_runtime");
+            tracing::trace!("Inside tokio runtime block");
+
+            collect_input_files_impl(current_directory, inputs).await
+        })
+}
+
 /// Run beautytips
 ///
 /// # Errors
@@ -140,7 +177,7 @@ pub fn run<'a>(
             let _span = tracing::span!(tracing::Level::TRACE, "tokio_runtime");
             tracing::trace!("Inside tokio runtime block");
 
-            let (root_directory, files) = collect_input_files(current_directory, inputs).await?;
+            let (root_directory, files) = collect_input_files_impl(current_directory, inputs).await?;
 
             tracing::debug!(
                 "Detected root directory: {root_directory:?} with changed files: {files:?}"

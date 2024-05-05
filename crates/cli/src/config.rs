@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::{collections::HashMap, fmt::Display, path::Path};
 
@@ -215,8 +214,6 @@ pub fn merge_action_groups(
     other: &Configuration,
     action_map: &ActionMap,
 ) -> anyhow::Result<ActionGroups> {
-    eprintln!("THIS: {this:?}\nOTHER: {other:?}\nMAP: {action_map:?}\n");
-
     this.action_groups
         .iter()
         .map(|(k, v)| {
@@ -476,7 +473,6 @@ pub fn builtin() -> Configuration {
 
 pub fn load_user_configuration() -> anyhow::Result<Configuration> {
     let base = builtin();
-    eprintln!("Base: test_me has {} entries", base.action_group("test_me").unwrap().count());
 
     let config_dir = dirs::config_dir()
         .map(|cd| cd.join("beautytips"))
@@ -485,15 +481,7 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
 
     let user = Configuration::try_from(config_file.as_path())
         .context("Failed to parse configuration file {config_file:?}")?;
-    let result = base.merge(user);
-
-    if let Ok(r) = &result {
-    eprintln!("COMBINED: test_me has {} entries", r.action_group("test_me").unwrap().count());
-    } else {
-    eprintln!("COMBINATION failed");
-    }
-
-    result
+    base.merge(user)
 }
 
 #[cfg(test)]
