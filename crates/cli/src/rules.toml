@@ -40,4 +40,4 @@ command = "/bin/sh -c \"echo -e {{cargo_targets...}}\""
 
 [[action_groups]]
 name = "test_me"
-actions = ["test_echo", "test_fail", "test_files", "test_foobar", "test_files_filtered", "test_cargo_targets"]
+actions = ["test_echo", "test_fail", "test_file", "test_files", "test_foobar", "test_files_filtered", "test_cargo_targets"]

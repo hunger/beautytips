@@ -241,7 +241,7 @@ async fn run_single_action(
 pub async fn run(
     current_directory: PathBuf,
     sender: ActionUpdateSender,
-    mut actions: ActionDefinitionIterator<'static>,
+    actions: ActionDefinitionIterator<'static>,
     files: Vec<PathBuf>,
 ) -> crate::Result<()> {
     tracing::trace!("Starting actions");
@@ -251,6 +251,8 @@ pub async fn run(
     for a in actions {
         let cd = current_directory.clone();
         let tx = sender.clone();
+
+        tracing::trace!("Spawning task for action {}", a.id);
 
         join_set.spawn(run_single_action(cd, tx, a, cache_handle.query()));
     }

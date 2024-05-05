@@ -18,20 +18,16 @@ fn map_id_to_index(
     action_map: &ActionMap,
     unknown_actions: &mut Vec<String>,
 ) -> usize {
-    eprintln!("map id {id} to index using {action_map:?} and {unknown_actions:?}.");
     let action_index = action_map.get(id);
     if let Some(ai) = action_index {
-        eprintln!("    ==> Have action at id {ai}");
         *ai
     } else {
         let unknown_pos = unknown_actions.iter().position(|s| s == id);
         if let Some(up) = unknown_pos {
-        eprintln!("    ==> Action is already unknown at index {}", up + UNKNOWN_ACTION_OFFSET);
             up + UNKNOWN_ACTION_OFFSET
         } else {
             let up = unknown_actions.len();
             unknown_actions.push(id.to_string());
-        eprintln!("    ==> Action is newly unknown at index {}", up + UNKNOWN_ACTION_OFFSET);
             up + UNKNOWN_ACTION_OFFSET
         }
     }
@@ -219,7 +215,8 @@ pub fn merge_action_groups(
     other: &Configuration,
     action_map: &ActionMap,
 ) -> anyhow::Result<ActionGroups> {
-    eprintln!("merging action groups: {action_map:?}");
+    eprintln!("THIS: {this:?}\nOTHER: {other:?}\nMAP: {action_map:?}\n");
+
     this.action_groups
         .iter()
         .map(|(k, v)| {
@@ -237,7 +234,7 @@ pub fn merge_action_groups(
                     .filter_map(|id| {
                         let index = map_id_to_index(&id, action_map, &mut vec![]);
                         // ignore unknwon actions here: They were removed by the merged config, which is fine
-                        (index >= UNKNOWN_ACTION_OFFSET).then_some(index)
+                        (index < UNKNOWN_ACTION_OFFSET).then_some(index)
                     })
                     .collect::<Vec<_>>()),
             )
@@ -299,7 +296,6 @@ pub fn merge_action_groups(
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(self, other: Self) -> anyhow::Result<Self> {
-        eprintln!("MERGING: {self:?}\n <== \n{other:?}\n\n");
         assert!(self.unknown_actions.is_empty());
 
         let mut actions: Vec<beautytips::ActionDefinition> = merge_actions(&self, &other)?;
@@ -478,8 +474,9 @@ pub fn builtin() -> Configuration {
     base.merge(config).expect("builtins should merge just fine")
 }
 
-pub fn load_user_config() -> anyhow::Result<Configuration> {
+pub fn load_user_configuration() -> anyhow::Result<Configuration> {
     let base = builtin();
+    eprintln!("Base: test_me has {} entries", base.action_group("test_me").unwrap().count());
 
     let config_dir = dirs::config_dir()
         .map(|cd| cd.join("beautytips"))
@@ -488,7 +485,15 @@ pub fn load_user_config() -> anyhow::Result<Configuration> {
 
     let user = Configuration::try_from(config_file.as_path())
         .context("Failed to parse configuration file {config_file:?}")?;
-    base.merge(user)
+    let result = base.merge(user);
+
+    if let Ok(r) = &result {
+    eprintln!("COMBINED: test_me has {} entries", r.action_group("test_me").unwrap().count());
+    } else {
+    eprintln!("COMBINATION failed");
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -512,7 +517,6 @@ actions = [ "test1", "test2" ]
 "#;
 
         let base: Configuration = base.try_into().unwrap();
-        eprintln!("{base:?}");
 
         assert_eq!(base.action_count(), 2);
         assert!(base.action("test1").is_some());
@@ -525,7 +529,6 @@ actions = [ "test1", "test2" ]
         let base = "";
 
         let base: Configuration = base.try_into().unwrap();
-        eprintln!("{base:?}");
 
         assert_eq!(base.action_count(), 0);
         assert_eq!(base.action_group_count(), 0);
@@ -620,6 +623,42 @@ actions = [ "test1", "test2" ]
     }
 
     #[test]
+    fn test_configuration_merge_empty() {
+        let base = r#"[[actions]]
+name = "test1"
+command = "foobar x y z"
+
+[[actions]]
+name = "test2"
+command = "foobar \"a b c\""
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "test3_b"
+command = "do something"
+inputs.files = [ "**/*.slint", "**/*.rs" ]
+
+[[action_groups]]
+name = "test"
+actions = [ "test1", "test2" ]
+"#;
+
+        let base: Configuration = base.try_into().unwrap();
+
+        let other: Configuration = Configuration::default();
+
+        let merge = base.merge(other).unwrap();
+
+        assert_eq!(merge.action_count(), 3);
+        assert!(merge.action("test1").is_some());
+        assert!(merge.action("test3_b").is_some());
+        assert!(merge.action("test2").is_some());
+        assert_eq!(merge.action_group_count(), 1);
+        let it = merge.action_group("test").unwrap();
+        assert_eq!(it.count(), 2);
+    }
+
+    #[test]
     fn test_configuration_merge() {
         let base = r#"[[actions]]
 name = "test1"
@@ -641,7 +680,6 @@ actions = [ "test1", "test2" ]
 "#;
 
         let base: Configuration = base.try_into().unwrap();
-        eprintln!("Base: {base:?}");
 
         let other = r#"[[actions]]
 name = "test3_o"
@@ -664,7 +702,6 @@ name = "test_group"
 actions = [ "test3_b" ]
 "#;
         let other: Configuration = other.try_into().unwrap();
-        eprintln!("Other: {other:?}");
 
         let merge = base.merge(other).unwrap();
 
@@ -677,5 +714,15 @@ actions = [ "test3_b" ]
         assert_eq!(it.next().unwrap().id.as_str(), "test3_b");
         assert!(it.next().is_none());
         
+    }
+
+    #[test]
+    fn test_builtins() {
+        let builtin = builtin();
+
+        assert!(builtin.action_count() > 0);
+        assert!(builtin.action_group_count() > 0);
+        let it = builtin.action_group("test_me").unwrap();
+        assert!(it.count() > 1);
     }
 }

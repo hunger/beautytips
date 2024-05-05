@@ -142,6 +142,10 @@ pub fn run<'a>(
 
             let (root_directory, files) = collect_input_files(current_directory, inputs).await?;
 
+            tracing::debug!(
+                "Detected root directory: {root_directory:?} with changed files: {files:?}"
+            );
+
             // # Safety: actions are valid during the entire time the
             // o runtime is up. So it should be safe to treat the `actions`
             // as static.
@@ -152,15 +156,17 @@ pub fn run<'a>(
                 >(actions)
             };
 
-            tracing::debug!(
-                "detected root directory: {root_directory:?} with changed files: {files:?}"
-            );
-
             let (tx, rx) = tokio::sync::mpsc::channel(10);
             let runner = tokio::task::spawn(async move {
                 let _span = tracing::span!(tracing::Level::TRACE, "runner_task");
 
-                actions::run(root_directory, tx, actions, files).await
+                tracing::debug!("Runner task started");
+
+                let result = actions::run(root_directory, tx, actions, files).await;
+
+                tracing::debug!("Runner task finished");
+
+                result
             });
 
             handle_reports(reporter, rx).await;
