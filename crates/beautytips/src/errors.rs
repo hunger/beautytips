@@ -32,7 +32,7 @@ enum ErrorKind {
     DirectoryWalkError {
         error: ignore::Error,
         base_directory: PathBuf,
-    }
+    },
 }
 
 impl From<ErrorKind> for Error {
@@ -45,7 +45,10 @@ impl From<ErrorKind> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self.kind {
-            ErrorKind::DirectoryWalkError { error, base_directory } => {
+            ErrorKind::DirectoryWalkError {
+                error,
+                base_directory,
+            } => {
                 write!(f, "Could not collect files in {base_directory:?}: {error}")
             }
             ErrorKind::FileError { message, error } => {
@@ -83,7 +86,11 @@ impl std::error::Error for Error {}
 /// `pub(crate)` constructors, visible only in this crate.
 impl Error {
     pub(crate) fn new_directory_walk(base_directory: PathBuf, error: ignore::Error) -> Self {
-        ErrorKind::DirectoryWalkError { error, base_directory }.into()
+        ErrorKind::DirectoryWalkError {
+            error,
+            base_directory,
+        }
+        .into()
     }
     pub(crate) fn new_io_error(message: &str, error: std::io::Error) -> Self {
         ErrorKind::FileError {

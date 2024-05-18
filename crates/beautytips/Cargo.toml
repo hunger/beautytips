@@ -19,7 +19,7 @@ version.workspace = true
 workspace = true
 
 [dependencies]
-async-trait = "0.1.79"
+async-trait = "0.1.80"
 cargo_toml = "0.20.2"
 futures = "0.3.30"
 glob = { workspace = true }

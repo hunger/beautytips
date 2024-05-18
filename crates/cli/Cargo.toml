@@ -23,13 +23,13 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-anyhow = "1.0.81"
+anyhow = "1.0.86"
 beautytips = { workspace = true }
 clap = { version = "4.5.4", features = ["cargo", "derive"] }
 dirs = "5.0.1"
 glob = { workspace = true }
 shell-words = { workspace = true }
-serde = { version = "1.0.199", features = ["derive"] }
+serde = { version = "1.0.202", features = ["derive"] }
 termion = "4.0.0"
-toml = { version = "0.8.12", features = ["preserve_order"] }
+toml = { version = "0.8.13", features = ["preserve_order"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

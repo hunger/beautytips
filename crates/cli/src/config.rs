@@ -12,11 +12,7 @@ pub struct ActionId(String);
 
 const UNKNOWN_ACTION_OFFSET: usize = usize::MAX / 2;
 
-fn map_id_to_index(
-    id: &str,
-    action_map: &ActionMap,
-    unknown_actions: &mut Vec<String>,
-) -> usize {
+fn map_id_to_index(id: &str, action_map: &ActionMap, unknown_actions: &mut Vec<String>) -> usize {
     let action_index = action_map.get(id);
     if let Some(ai) = action_index {
         *ai
@@ -322,9 +318,15 @@ impl Configuration {
             .and_then(|index| self.actions.get(*index))
     }
 
-    pub fn action_group<'a>(&'a self, name: &str) -> Option<beautytips::ActionDefinitionIterator<'a>> {
+    pub fn action_group<'a>(
+        &'a self,
+        name: &str,
+    ) -> Option<beautytips::ActionDefinitionIterator<'a>> {
         let indices = self.action_groups.get(name)?.iter().copied().collect();
-        Some(beautytips::ActionDefinitionIterator::new(&self.actions, indices))
+        Some(beautytips::ActionDefinitionIterator::new(
+            &self.actions,
+            indices,
+        ))
     }
 
     pub fn action_count(&self) -> usize {
@@ -701,7 +703,6 @@ actions = [ "test3_b" ]
         let mut it = merge.action_group("test_group").unwrap();
         assert_eq!(it.next().unwrap().id.as_str(), "test3_b");
         assert!(it.next().is_none());
-        
     }
 
     #[test]

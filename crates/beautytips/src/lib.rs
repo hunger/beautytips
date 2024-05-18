@@ -62,14 +62,13 @@ async fn collect_input_files_impl(
         InputFiles::FileList(files) => Ok((current_directory, files)),
         InputFiles::AllFiles(base_dir) => {
             let files = ignore::WalkBuilder::new(base_dir.clone())
-                .filter_entry(|d| !d.path().is_dir())
                 .build()
                 .map(|d| d.map(ignore::DirEntry::into_path))
-                .collect::<Result<Vec<_>, _>>().map_err(|e| errors::Error::new_directory_walk(base_dir.clone(), e))?;
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| errors::Error::new_directory_walk(base_dir.clone(), e))?;
             Ok((base_dir, files))
         }
     }?;
-    assert!(root_directory.is_absolute());
 
     let root_directory = tokio::fs::canonicalize(&root_directory)
         .await
@@ -86,6 +85,13 @@ async fn collect_input_files_impl(
 
     let mut canonical_files = Vec::new();
     for f in &files {
+        let meta = tokio::fs::metadata(&f)
+            .await
+            .map_err(|e| Error::new_io_error(&format!("Failed to get metadata for {:?}", f), e))?;
+        if meta.is_dir() {
+            continue;
+        }
+
         let f = tokio::fs::canonicalize(&f)
             .await
             .map_err(|e| Error::new_io_error(&format!("Could not canonicalize {f:?}"), e))?;
@@ -177,7 +183,8 @@ pub fn run<'a>(
             let _span = tracing::span!(tracing::Level::TRACE, "tokio_runtime");
             tracing::trace!("Inside tokio runtime block");
 
-            let (root_directory, files) = collect_input_files_impl(current_directory, inputs).await?;
+            let (root_directory, files) =
+                collect_input_files_impl(current_directory, inputs).await?;
 
             tracing::debug!(
                 "Detected root directory: {root_directory:?} with changed files: {files:?}"

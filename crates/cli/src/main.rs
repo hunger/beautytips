@@ -29,11 +29,12 @@ fn main() -> Result<()> {
 
     match command.command {
         arg_parse::Command::ListFiles { source } => {
-            let (root_dir, files) = beautytips::collect_input_files(std::env::current_dir()?, source)?;
+            let (root_dir, files) =
+                beautytips::collect_input_files(std::env::current_dir()?, source)?;
             println!("root directory: {root_dir:?}");
             for f in &files {
                 println!("{f:?}");
-            };
+            }
             Ok(())
         }
     }

@@ -36,7 +36,7 @@ struct Cli {
     debug_level: u8,
     #[arg(long = "verbose", action = clap::ArgAction::Count)]
     verbosity_level: u8,
-    
+
     #[command(subcommand)]
     action: CliCommand,
 }
@@ -81,7 +81,11 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
         },
     };
 
-    Ok(CommandlineConfiguration { debug_level: cli.debug_level, verbosity_level: cli.verbosity_level, command })
+    Ok(CommandlineConfiguration {
+        debug_level: cli.debug_level,
+        verbosity_level: cli.verbosity_level,
+        command,
+    })
 }
 
 #[cfg(test)]
