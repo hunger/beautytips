@@ -22,10 +22,17 @@ struct CliInputFiles {
 #[derive(Clone, Debug, Subcommand)]
 #[command(rename_all = "kebab-case")]
 enum CliCommand {
+    ListActions,
     /// Doc comment
     ListFiles {
         #[command(flatten)]
         source: CliInputFiles,
+    },
+    Run {
+        #[command(flatten)]
+        source: CliInputFiles,
+        #[arg(long = "action", num_args = 1.., value_name= "ACTION")]
+        actions: Vec<String>,
     },
 }
 
@@ -43,7 +50,14 @@ struct Cli {
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    ListFiles { source: beautytips::InputFiles },
+    ListFiles {
+        source: beautytips::InputFiles,
+    },
+    ListActions { },
+    RunActions {
+        source: beautytips::InputFiles,
+        actions: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -67,7 +81,7 @@ fn generate_input_files(inputs: &CliInputFiles) -> anyhow::Result<beautytips::In
         Ok(beautytips::InputFiles::AllFiles(directory.clone()))
     } else {
         Err(anyhow::anyhow!(
-            "Unknown iput file list generation found on command line"
+            "Unknown input file list generation found on command line"
         ))
     }
 }
@@ -76,8 +90,13 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
     let cli = Cli::parse();
 
     let command = match cli.action {
+        CliCommand::ListActions => Command::ListActions { },
         CliCommand::ListFiles { source } => Command::ListFiles {
             source: generate_input_files(&source)?,
+        },
+        CliCommand::Run { source, actions } => Command::RunActions {
+            source: generate_input_files(&source)?,
+            actions,
         },
     };
 

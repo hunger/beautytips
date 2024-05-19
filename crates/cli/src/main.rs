@@ -28,6 +28,16 @@ fn main() -> Result<()> {
         .init();
 
     match command.command {
+        arg_parse::Command::ListActions {  } => {
+            for ag in config.action_groups.keys() {
+                println!("{ag} (group)");
+            }
+            for a in config.action_map.keys() {
+                println!("{a}");
+            }
+
+            Ok(())
+        },
         arg_parse::Command::ListFiles { source } => {
             let (root_dir, files) =
                 beautytips::collect_input_files(std::env::current_dir()?, source)?;
@@ -37,18 +47,22 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        arg_parse::Command::RunActions {
+            source: inputs,
+            actions,
+        } => {
+            let reporter = reporter::Reporter::default();
+
+            let actions = config.named_actions(&actions)?;
+
+            beautytips::run(
+                std::env::current_dir()?,
+                inputs,
+                actions,
+                Box::new(reporter),
+            )?;
+
+            Ok(())
+        }
     }
-
-    // let actions = config.action_group("test_me").unwrap();
-
-    // let reporter = reporter::Reporter::default();
-
-    // beautytips::run(
-    //     std::env::current_dir()?,
-    //     beautytips::InputFiles::Vcs(beautytips::VcsInput::default()),
-    //     actions,
-    //     Box::new(reporter),
-    // )?;
-
-    // Ok(())
 }

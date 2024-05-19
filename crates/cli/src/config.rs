@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::{collections::HashMap, fmt::Display, path::Path};
 
@@ -111,6 +112,7 @@ impl std::str::FromStr for ActionId {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct TomlActionDefinition {
     pub name: ActionId,
+    pub description: String,
     #[serde(default)]
     pub command: String,
     #[serde(default)]
@@ -140,10 +142,10 @@ struct TomlConfiguration {
 
 #[derive(Clone, Debug, Default)]
 pub struct Configuration {
-    action_groups: ActionGroups,
-    actions: Vec<beautytips::ActionDefinition>,
+    pub action_groups: ActionGroups,
+    pub actions: Vec<beautytips::ActionDefinition>,
     unknown_actions: Vec<String>,
-    action_map: ActionMap,
+    pub action_map: ActionMap,
 }
 
 fn merge_action_definition(
@@ -154,7 +156,7 @@ fn merge_action_definition(
     Ok(other.clone())
 }
 
-pub fn merge_actions(
+fn merge_actions(
     this: &Configuration,
     other: &Configuration,
 ) -> anyhow::Result<Vec<beautytips::ActionDefinition>> {
@@ -188,24 +190,24 @@ pub fn merge_actions(
                 Some(ActionState::Add(definition.clone()))
             }
         }))
-        .filter_map(|ad| match ad {
-            ActionState::Add(d) => Some(Ok(d)),
-            ActionState::Change(sd, od) => Some(merge_action_definition(&sd, &od)),
+        .map(|ad| match ad {
+            ActionState::Add(d) => Ok(d),
+            ActionState::Change(sd, od) => merge_action_definition(&sd, &od),
             ActionState::Remove(d) => {
                 if d.expected_exit_code != 0 || !d.input_filters.is_empty() {
-                    Some(Err(anyhow::anyhow!(format!(
+                    Err(anyhow::anyhow!(format!(
                         "Removal of '{}' failed: Too many fields",
                         d.id
-                    ))))
+                    )))
                 } else {
-                    None
+                    Ok(d)
                 }
             }
         })
         .collect::<anyhow::Result<_>>()
 }
 
-pub fn merge_action_groups(
+fn merge_action_groups(
     this: &Configuration,
     other: &Configuration,
     action_map: &ActionMap,
@@ -286,6 +288,80 @@ pub fn merge_action_groups(
         )
 }
 
+fn map_toml_action(
+    ad: TomlActionDefinition,
+    source_name: &str,
+    priority: u8,
+) -> anyhow::Result<beautytips::ActionDefinition> {
+    let id = ad.name.to_string();
+
+    let command = shell_words::split(ad.command.trim()).context(format!(
+        "Failed to parse command '{}' of action '{id}'",
+        ad.command
+    ))?;
+
+    let input_filters = ad
+        .inputs
+        .into_iter()
+        .try_fold(HashMap::new(), |mut acc, (k, v)| {
+            let entry = acc.entry(k.clone());
+            if matches!(entry, std::collections::hash_map::Entry::Occupied(_)) {
+                return Err(anyhow::anyhow!(format!(
+                    "Redefinition of input filters for '{k}'"
+                )));
+            }
+            let globs = v
+                .iter()
+                .map(|p| {
+                    glob::Pattern::new(p)
+                        .context(format!("Failed to parse glob pattern '{p}' for '{k}'"))
+                })
+                .collect::<Result<_, _>>()?;
+            entry.or_insert(globs);
+            Ok(acc)
+        })
+        .context("Parsing input filters for action '{id}'")?;
+
+    Ok(beautytips::ActionDefinition {
+        id: id.clone(),
+        source: source_name.to_string(),
+        priority,
+        description: ad.description.clone(),
+        command,
+        expected_exit_code: ad.exit_code,
+        input_filters,
+    })
+}
+
+fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> HashMap<String, usize> {
+    let mut map: HashMap<String, usize> = actions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, d)| {
+            (d.command.len() != 1 || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
+                .then_some((d.id.clone(), index))
+        })
+        .collect();
+    map.extend(
+        actions
+            .iter()
+            .enumerate()
+            .map(|(index, d)| (format!("{}/{}", d.source, d.id), index)),
+    );
+    map.extend(
+        actions
+            .iter()
+            .enumerate()
+            .map(|(index, d)| (format!("{}@{}", d.id, d.priority), index)),
+    );
+
+    eprintln!("*** Action Map:");
+    for k in map.keys() {
+        eprintln!("     {k}");
+    }
+    map
+}
+
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(self, other: Self) -> anyhow::Result<Self> {
@@ -294,12 +370,7 @@ impl Configuration {
         let mut actions: Vec<beautytips::ActionDefinition> = merge_actions(&self, &other)?;
 
         actions.sort();
-        let action_map: HashMap<_, _> = actions
-            .iter()
-            .enumerate()
-            .map(|(index, d)| (d.id.clone(), index))
-            .collect();
-
+        let action_map: HashMap<_, _> = populate_action_map(&actions);
         let action_groups = merge_action_groups(&self, &other, &action_map)?;
 
         drop(other); // consume other!
@@ -336,56 +407,40 @@ impl Configuration {
     pub fn action_group_count(&self) -> usize {
         self.action_groups.len()
     }
-}
 
-impl TryFrom<&str> for Configuration {
-    type Error = anyhow::Error;
+    pub fn named_actions<'a>(
+        &'a self,
+        action_names: &[String],
+    ) -> anyhow::Result<beautytips::ActionDefinitionIterator<'a>> {
+        let mut indices = HashSet::new();
+        for action_name in action_names {
+            if let Some(index) = self.action_map.get(action_name) {
+                indices.insert(*index);
+            } else if let Some(group_indices) = self.action_groups.get(action_name) {
+                indices.extend(group_indices.iter());
+            } else {
+                return Err(anyhow::anyhow!(format!("Unknown action {action_name}")));
+            }
+        }
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Ok(beautytips::ActionDefinitionIterator::new(
+            &self.actions,
+            indices,
+        ))
+    }
+
+    fn from_string(value: &str, source_name: &str) -> anyhow::Result<Configuration> {
+        static PRIORITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+        let priority = PRIORITY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let toml_config: TomlConfiguration =
             toml::from_str(value).context("Failed to parse toml")?;
 
         let mut actions: Vec<_> = toml_config
             .actions
             .into_iter()
-            .map(|ad| {
-                let id = ad.name.to_string();
-
-                let command = shell_words::split(ad.command.trim()).context(format!(
-                    "Failed to parse command '{}' of action '{id}'",
-                    ad.command
-                ))?;
-
-                let input_filters = ad
-                    .inputs
-                    .into_iter()
-                    .try_fold(HashMap::new(), |mut acc, (k, v)| {
-                        let entry = acc.entry(k.clone());
-                        if matches!(entry, std::collections::hash_map::Entry::Occupied(_)) {
-                            return Err(anyhow::anyhow!(format!(
-                                "Redefinition of input filters for '{k}'"
-                            )));
-                        }
-                        let globs = v
-                            .iter()
-                            .map(|p| {
-                                glob::Pattern::new(p).context(format!(
-                                    "Failed to parse glob pattern '{p}' for '{k}'"
-                                ))
-                            })
-                            .collect::<Result<_, _>>()?;
-                        entry.or_insert(globs);
-                        Ok(acc)
-                    })
-                    .context("Parsing input filters for action '{id}'")?;
-
-                Ok(beautytips::ActionDefinition {
-                    id: id.clone(),
-                    command,
-                    expected_exit_code: ad.exit_code,
-                    input_filters,
-                })
-            })
+            .map(|ad| map_toml_action(ad, source_name, priority))
             .collect::<anyhow::Result<_>>()?;
 
         actions.sort();
@@ -403,12 +458,7 @@ impl TryFrom<&str> for Configuration {
                 current = Some(&d.id);
             }
         }
-        let action_map: HashMap<_, _> = actions
-            .iter()
-            .enumerate()
-            .map(|(index, d)| (d.id.clone(), index))
-            .collect();
-
+        let action_map = populate_action_map(&actions);
         let mut unknown_actions = Vec::new();
 
         let action_groups = toml_config
@@ -429,16 +479,27 @@ impl TryFrom<&str> for Configuration {
                     ));
                 }
 
-                let v = v
+                let v: Vec<usize> = v
                     .iter()
                     .map(|id| map_id_to_index(id, &action_map, &mut unknown_actions))
                     .collect();
 
-                let old = acc.insert(v_id.to_string(), v);
-
+                let old = acc.insert(v_id.to_string(), v.clone());
                 if old.is_some() {
                     return Err(anyhow::anyhow!(format!(
                         "Action group '{v_id}' defined twice in one config location"
+                    )));
+                }
+                let old = acc.insert(format!("{source_name}/{v_id}"), v.clone());
+                if old.is_some() {
+                    return Err(anyhow::anyhow!(format!(
+                        "Action group '{source_name}/{v_id}' defined twice in one config location"
+                    )));
+                }
+                let old = acc.insert(format!("{v_id}@{priority}"), v);
+                if old.is_some() {
+                    return Err(anyhow::anyhow!(format!(
+                        "Action group '{v_id}@{priority}' defined twice in one config location"
                     )));
                 }
 
@@ -452,22 +513,19 @@ impl TryFrom<&str> for Configuration {
             action_map,
         })
     }
-}
 
-impl TryFrom<&Path> for Configuration {
-    type Error = anyhow::Error;
+    fn from_path(path: &Path, source_name: &str) -> anyhow::Result<Self> {
+        let config_data =
+            std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
 
-    fn try_from(value: &Path) -> Result<Self, Self::Error> {
-        let config_data = std::fs::read_to_string(value)
-            .context(format!("Failed to read toml file {value:?}"))?;
-
-        Configuration::try_from(config_data.as_str()).context("Failed to parse toml file {value:?}")
+        Configuration::from_string(config_data.as_str(), source_name)
+            .context("Failed to parse toml file {value:?}")
     }
 }
 
 pub fn builtin() -> Configuration {
     let toml = include_str!("rules.toml");
-    let config = Configuration::try_from(toml).expect("builtins should parse fine");
+    let config = Configuration::from_string(toml, "builtin").expect("builtins should parse fine");
 
     let base = Configuration::default();
     base.merge(config).expect("builtins should merge just fine")
@@ -481,7 +539,7 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         .ok_or(anyhow::anyhow!("Config directory not found"))?;
     let config_file = config_dir.join("config.toml");
 
-    let user = Configuration::try_from(config_file.as_path())
+    let user = Configuration::from_path(config_file.as_path(), "user")
         .context("Failed to parse configuration file {config_file:?}")?;
     base.merge(user)
 }

@@ -9,6 +9,9 @@ mod inputs;
 #[derive(Clone, Debug, Eq)]
 pub struct ActionDefinition {
     pub id: String,
+    pub source: String,
+    pub priority: u8,
+    pub description: String,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
@@ -16,23 +19,28 @@ pub struct ActionDefinition {
 
 impl PartialOrd for ActionDefinition {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.id.partial_cmp(&other.id)
+        Some(self.cmp(other))
     }
 }
 
 impl PartialEq for ActionDefinition {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id)
+        self.id.eq(&other.id) && self.priority.eq(&other.priority)
     }
 }
 
 impl Ord for ActionDefinition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
+        let cmp = self.id.cmp(&other.id);
+        if cmp == std::cmp::Ordering::Equal {
+            self.priority.cmp(&other.priority)
+        } else {
+            cmp
+        }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ActionDefinitionIterator<'a> {
     actions: &'a [ActionDefinition],
     indices: HashSet<usize>,
@@ -40,6 +48,7 @@ pub struct ActionDefinitionIterator<'a> {
 }
 
 impl<'a> ActionDefinitionIterator<'a> {
+    #[must_use]
     pub fn new(actions: &'a [ActionDefinition], indices: HashSet<usize>) -> Self {
         Self {
             actions,
