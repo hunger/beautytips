@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use tracing_subscriber::prelude::*;
 
 mod arg_parse;
+mod builtin_commands;
 mod config;
 mod reporter;
 
@@ -28,6 +29,9 @@ fn main() -> Result<()> {
         .init();
 
     match command.command {
+        arg_parse::Command::BuiltinCommand { action, arguments } => {
+            builtin_commands::run_builtin_command(&action, &arguments)
+        }
         arg_parse::Command::ListActions {  } => {
             for ag in config.action_groups.keys() {
                 println!("{ag} (group)");

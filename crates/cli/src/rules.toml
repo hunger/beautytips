@@ -1,4 +1,9 @@
 [[actions]]
+name = "check_large_file"
+description = "Check for large files in commit"
+command = "{BEAUTY_TIPS} builtin-commands --size=50k {files...}"
+
+[[actions]]
 name = "check_cargo_fmt"
 description = "Run cargo fmt in check mode"
 command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
@@ -9,44 +14,3 @@ name = "fix_cargo_fmt"
 description = "Run cargo fmt in fix mode"
 command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
-
-[[actions]]
-name = "test_echo"
-description = "Echo 'baz'"
-command = "/bin/sh -c \"echo -e \\\"baz\\\"; sleep 2; exit 0\""
-
-[[actions]]
-name = "test_fail"
-description = "Fail the action run"
-command = "/bin/sh -c \"echo -e \\\"This will fail\\\"; sleep 5; exit 10\""
-exit-code = 1
-
-[[actions]]
-name = "test_file"
-description = "Echo back all files"
-command = "/bin/sh -c \"echo -e {{files}}\""
-
-[[actions]]
-name = "test_files"
-description = "Echo back all files in one go"
-command = "/bin/sh -c \"echo -e {{files...}}\""
-
-[[actions]]
-name = "test_foobar"
-description = "Echo back all foobar in one go"
-command = "/bin/sh -c \"echo -e {{foobar...}}\""
-
-[[actions]]
-name = "test_files_filtered"
-description = "Echo back all files in one go, but apply filter first"
-command = "/bin/sh -c \"echo -e {{files...}}\""
-inputs.file = [ "*.ignoreme" ]
-
-[[actions]]
-name = "test_cargo_targets"
-description = "Echo back all cargo targets in one go"
-command = "/bin/sh -c \"echo -e {{cargo_targets...}}\""
-
-[[action_groups]]
-name = "test_me"
-actions = ["test_echo", "test_fail", "test_file", "test_files", "test_foobar", "test_files_filtered", "test_cargo_targets"]

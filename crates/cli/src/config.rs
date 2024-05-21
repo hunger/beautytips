@@ -295,10 +295,23 @@ fn map_toml_action(
 ) -> anyhow::Result<beautytips::ActionDefinition> {
     let id = ad.name.to_string();
 
-    let command = shell_words::split(ad.command.trim()).context(format!(
-        "Failed to parse command '{}' of action '{id}'",
-        ad.command
-    ))?;
+    let command = {
+        let mut command = shell_words::split(ad.command.trim()).context(format!(
+            "Failed to parse command '{}' of action '{id}'",
+            ad.command
+        ))?;
+
+        if let Some(executable) = command.first() {
+            if executable == "{BEAUTY_TIPS}" {
+                command[0] = std::env::current_exe()
+                    .context("Failed to get beauty_tips binary location")?
+                    .to_string_lossy()
+                    .to_string();
+            }
+        }
+
+        command
+    };
 
     let input_filters = ad
         .inputs
@@ -338,8 +351,9 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> HashMap<Stri
         .iter()
         .enumerate()
         .filter_map(|(index, d)| {
-            (d.command.len() != 1 || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
-                .then_some((d.id.clone(), index))
+            (d.command.len() != 1
+                || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
+            .then_some((d.id.clone(), index))
         })
         .collect();
     map.extend(
@@ -362,6 +376,80 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> HashMap<Stri
     map
 }
 
+fn group_action_id(id: &str) -> Option<String> {
+    let mut prefix = String::new();
+    let mut main_part = String::new();
+    let mut main_start = String::new();
+    let mut priority = String::new();
+
+    let mut current = String::new();
+    let mut candidate = String::new();
+
+    for c in id.chars() {
+        match c {
+            '/' => {
+                assert!(!current.is_empty());
+                assert!(prefix.is_empty());
+
+                prefix = current;
+                current = String::new();
+                candidate = String::new();
+            }
+            '_' => {
+                assert!(!current.is_empty());
+
+                if candidate.is_empty() {
+                    candidate.clone_from(&current);
+                }
+            }
+            '@' => {
+                assert!(!current.is_empty());
+                assert!(main_part.is_empty());
+                assert!(main_start.is_empty());
+
+                main_part = current;
+                main_start = candidate;
+                current = String::new();
+                candidate = String::new();
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        if main_part.is_empty() {
+            main_part = current;
+            main_start = candidate;
+        } else {
+            priority = current;
+        }
+    }
+
+    assert!(!main_part.is_empty());
+
+    if main_start == main_part {
+        return None;
+    }
+
+    match (prefix.is_empty(), priority.is_empty()) {
+        (false, false) => Some(format!("{prefix}/{main_start}_all@{priority}")), // should not happen...
+        (true, false) => Some(format!("{main_start}_all@{priority}")),
+        (false, true) => Some(format!("{prefix}/{main_start}_all")),
+        (true, true) => Some(format!("{main_start}_all")),
+    }
+}
+
+fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &HashMap<String, usize>) {
+    for (k, v) in action_map
+        .iter()
+        .filter_map(|(k, v)| group_action_id(k).map(|id| (id, *v)))
+    {
+        action_groups.entry(k).or_default().push(v);
+    }
+}
+
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(self, other: Self) -> anyhow::Result<Self> {
@@ -371,7 +459,13 @@ impl Configuration {
 
         actions.sort();
         let action_map: HashMap<_, _> = populate_action_map(&actions);
-        let action_groups = merge_action_groups(&self, &other, &action_map)?;
+        let action_groups = {
+            let mut ags = merge_action_groups(&self, &other, &action_map)?;
+
+            add_auto_groups(&mut ags, &action_map);
+
+            ags
+        };
 
         drop(other); // consume other!
 
@@ -430,6 +524,9 @@ impl Configuration {
     }
 
     fn from_string(value: &str, source_name: &str) -> anyhow::Result<Configuration> {
+        assert!(!source_name.is_empty());
+        assert!(source_name.chars().all(|c| c.is_ascii_alphabetic()));
+
         static PRIORITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
         let priority = PRIORITY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

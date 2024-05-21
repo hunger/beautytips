@@ -3,7 +3,7 @@
 
 use clap::{Args, Parser, Subcommand};
 
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 /// Where to get files to look at from
 #[derive(Clone, Debug, Args)]
@@ -22,6 +22,10 @@ struct CliInputFiles {
 #[derive(Clone, Debug, Subcommand)]
 #[command(rename_all = "kebab-case")]
 enum CliCommand {
+    BuiltinCommand {
+        action: String,
+        arguments: Vec<OsString>,        
+    },
     ListActions,
     /// Doc comment
     ListFiles {
@@ -39,7 +43,7 @@ enum CliCommand {
 #[derive(Clone, Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    #[arg(long = "debug", action = clap::ArgAction::Count)]
+    #[arg(long = "debug", action = clap::ArgAction::Count, env = "BEAUTY_TIPS_LOG_LEVEL")]
     debug_level: u8,
     #[arg(long = "verbose", action = clap::ArgAction::Count)]
     verbosity_level: u8,
@@ -50,6 +54,10 @@ struct Cli {
 
 #[derive(Clone, Debug)]
 pub enum Command {
+    BuiltinCommand {
+        action: String,
+        arguments: Vec<OsString>,
+    },
     ListFiles {
         source: beautytips::InputFiles,
     },
@@ -90,6 +98,7 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
     let cli = Cli::parse();
 
     let command = match cli.action {
+        CliCommand::BuiltinCommand { action, arguments } => Command::BuiltinCommand { action, arguments, },
         CliCommand::ListActions => Command::ListActions { },
         CliCommand::ListFiles { source } => Command::ListFiles {
             source: generate_input_files(&source)?,
