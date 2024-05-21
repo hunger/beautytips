@@ -10,7 +10,6 @@ mod inputs;
 pub struct ActionDefinition {
     pub id: String,
     pub source: String,
-    pub priority: u8,
     pub description: String,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
@@ -25,7 +24,7 @@ impl PartialOrd for ActionDefinition {
 
 impl PartialEq for ActionDefinition {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id) && self.priority.eq(&other.priority)
+        self.id.eq(&other.id) && self.source.eq(&other.source)
     }
 }
 
@@ -33,7 +32,7 @@ impl Ord for ActionDefinition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let cmp = self.id.cmp(&other.id);
         if cmp == std::cmp::Ordering::Equal {
-            self.priority.cmp(&other.priority)
+            self.source.cmp(&other.source)
         } else {
             cmp
         }

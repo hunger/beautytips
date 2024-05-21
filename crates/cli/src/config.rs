@@ -3,14 +3,17 @@
 
 use std::collections::HashSet;
 use std::convert::TryFrom;
-use std::str::FromStr;
 use std::{collections::HashMap, fmt::Display, path::Path};
 
 use anyhow::Context;
 
 const UNKNOWN_ACTION_OFFSET: usize = usize::MAX / 2;
 
-fn map_id_to_index(id: &str, action_map: &ActionMap, unknown_actions: &mut Vec<String>) -> usize {
+fn map_id_to_index(
+    id: &QualifiedActionId,
+    action_map: &ActionMap,
+    unknown_actions: &mut UnknownActionsVec,
+) -> usize {
     let action_index = action_map.get(id);
     if let Some(ai) = action_index {
         *ai
@@ -20,7 +23,7 @@ fn map_id_to_index(id: &str, action_map: &ActionMap, unknown_actions: &mut Vec<S
             up + UNKNOWN_ACTION_OFFSET
         } else {
             let up = unknown_actions.len();
-            unknown_actions.push(id.to_string());
+            unknown_actions.push(id.clone());
             up + UNKNOWN_ACTION_OFFSET
         }
     }
@@ -29,14 +32,13 @@ fn map_id_to_index(id: &str, action_map: &ActionMap, unknown_actions: &mut Vec<S
 fn map_index_to_id(
     index: usize,
     actions: &[beautytips::ActionDefinition],
-    unknown_actions: &[String],
-) -> String {
+    unknown_actions: &[QualifiedActionId],
+) -> QualifiedActionId {
     if index < UNKNOWN_ACTION_OFFSET {
-        actions
-            .get(index)
-            .expect("This index had to be valid")
-            .id
-            .clone()
+        QualifiedActionId::new(
+            ActionId::new_str(&actions.get(index).expect("This index had to be valid").id)
+                .expect("This was valid before"),
+        )
     } else {
         unknown_actions
             .get(index - UNKNOWN_ACTION_OFFSET)
@@ -45,7 +47,7 @@ fn map_index_to_id(
     }
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
 
@@ -109,7 +111,7 @@ impl std::str::FromStr for ActionId {
     }
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionSource(String);
 
@@ -173,37 +175,34 @@ impl std::str::FromStr for ActionSource {
     }
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct QualifiedActionId {
-    id: ActionId,
     source: Option<ActionSource>,
-    priority: Option<u32>,
+    id: ActionId,
 }
 
 impl QualifiedActionId {
-    pub fn new_prioritized(id: ActionId, priority: u32) -> Self {
-        Self {
-            id,
-            source: None,
-            priority: Some(priority),
-        }
+    pub fn from_def_with_source(action_definition: &beautytips::ActionDefinition) -> Self {
+        Self::new_from_source(
+            ActionId::new_str(&action_definition.id).expect("This is a valid action id"),
+            ActionSource::new_str(&action_definition.source)
+                .expect("This is a valid action source"),
+        )
+    }
+    pub fn from_def(action_definition: &beautytips::ActionDefinition) -> Self {
+        Self::new(ActionId::new_str(&action_definition.id).expect("This is a valid action id"))
     }
 
     pub fn new_from_source(id: ActionId, source: ActionSource) -> Self {
         Self {
             id,
             source: Some(source),
-            priority: None,
         }
     }
 
     pub fn new(id: ActionId) -> Self {
-        Self {
-            id,
-            source: None,
-            priority: None,
-        }
+        Self { id, source: None }
     }
 
     /// Create a new `QualifiedActionId`
@@ -213,18 +212,10 @@ impl QualifiedActionId {
     /// Raise an invalid configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
     pub fn parse(input: String) -> anyhow::Result<Self> {
-        if let Some(separator) = input.find(&['/', '@']) {
-            if input.as_bytes()[separator] == b'/' {
-                let source = ActionSource::new_str(&input[..separator])?;
-                let id = ActionId::new_str(&input[separator + 1..])?;
-                Ok(Self::new_from_source(id, source))
-            } else {
-                let id = ActionId::new_str(&input[..separator])?;
-                let priority = u32::from_str(&input[separator + 1..])
-                    .map_err(|_| anyhow::anyhow!("Could not parse priority"))
-                    .context("Failed to parse qualified action id {input}")?;
-                Ok(Self::new_prioritized(id, priority))
-            }
+        if let Some(separator) = input.find('/') {
+            let source = ActionSource::new_str(&input[..separator])?;
+            let id = ActionId::new_str(&input[separator + 1..])?;
+            Ok(Self::new_from_source(id, source))
         } else {
             let id = ActionId::new(input).context("Failed to parse qualified action id")?;
             Ok(Self::new(id))
@@ -246,8 +237,6 @@ impl Display for QualifiedActionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(s) = &self.source {
             write!(f, "{s}/{}", self.id)
-        } else if let Some(p) = self.priority {
-            write!(f, "{}@{p}", self.id)
         } else {
             write!(f, "{}", self.id)
         }
@@ -291,8 +280,9 @@ struct TomlActionDefinition {
     pub inputs: HashMap<String, Vec<String>>,
 }
 
-type ActionGroups = HashMap<String, Vec<usize>>;
-type ActionMap = HashMap<String, usize>;
+type ActionGroups = HashMap<QualifiedActionId, Vec<usize>>;
+type ActionMap = HashMap<QualifiedActionId, usize>;
+type UnknownActionsVec = Vec<QualifiedActionId>;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -314,7 +304,7 @@ struct TomlConfiguration {
 pub struct Configuration {
     pub action_groups: ActionGroups,
     pub actions: Vec<beautytips::ActionDefinition>,
-    unknown_actions: Vec<String>,
+    unknown_actions: UnknownActionsVec,
     pub action_map: ActionMap,
 }
 
@@ -341,7 +331,7 @@ fn merge_actions(
         .actions
         .iter()
         .map(|definition| {
-            if let Some(sa) = this.action(&definition.id) {
+            if let Some(sa) = this.action(&QualifiedActionId::from_def(definition)) {
                 if definition.command.len() == 1
                     && definition.command.first() == Some(&"/dev/null".to_string())
                 {
@@ -354,7 +344,10 @@ fn merge_actions(
             }
         })
         .chain(this.actions.iter().filter_map(|definition| {
-            if other.action(&definition.id).is_some() {
+            if other
+                .action(&QualifiedActionId::from_def(definition))
+                .is_some()
+            {
                 None
             } else {
                 Some(ActionState::Add(definition.clone()))
@@ -460,8 +453,7 @@ fn merge_action_groups(
 
 fn map_toml_action(
     ad: TomlActionDefinition,
-    source_name: &str,
-    priority: u8,
+    source_name: &ActionSource,
 ) -> anyhow::Result<beautytips::ActionDefinition> {
     let id = ad.name.to_string();
 
@@ -508,7 +500,6 @@ fn map_toml_action(
     Ok(beautytips::ActionDefinition {
         id: id.clone(),
         source: source_name.to_string(),
-        priority,
         description: ad.description.clone(),
         command,
         expected_exit_code: ad.exit_code,
@@ -523,20 +514,14 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
         .filter_map(|(index, d)| {
             (d.command.len() != 1
                 || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
-            .then_some((d.id.clone(), index))
+            .then_some((QualifiedActionId::from_def(&d), index))
         })
         .collect();
     map.extend(
         actions
             .iter()
             .enumerate()
-            .map(|(index, d)| (format!("{}/{}", d.source, d.id), index)),
-    );
-    map.extend(
-        actions
-            .iter()
-            .enumerate()
-            .map(|(index, d)| (format!("{}@{}", d.id, d.priority), index)),
+            .map(|(index, d)| (QualifiedActionId::from_def_with_source(d), index)),
     );
 
     eprintln!("*** Action Map:");
@@ -546,69 +531,17 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
     map
 }
 
-fn group_action_id(id: &str) -> Option<String> {
-    let mut prefix = String::new();
-    let mut main_part = String::new();
-    let mut main_start = String::new();
-    let mut priority = String::new();
+fn group_action_id(id: &QualifiedActionId) -> Option<QualifiedActionId> {
+    let id_string = id.id.to_string();
 
-    let mut current = String::new();
-    let mut candidate = String::new();
-
-    for c in id.chars() {
-        match c {
-            '/' => {
-                assert!(!current.is_empty());
-                assert!(prefix.is_empty());
-
-                prefix = current;
-                current = String::new();
-                candidate = String::new();
-            }
-            '_' => {
-                assert!(!current.is_empty());
-
-                if candidate.is_empty() {
-                    candidate.clone_from(&current);
-                }
-            }
-            '@' => {
-                assert!(!current.is_empty());
-                assert!(main_part.is_empty());
-                assert!(main_start.is_empty());
-
-                main_part = current;
-                main_start = candidate;
-                current = String::new();
-                candidate = String::new();
-            }
-            _ => {
-                current.push(c);
-            }
-        }
-    }
-
-    if !current.is_empty() {
-        if main_part.is_empty() {
-            main_part = current;
-            main_start = candidate;
-        } else {
-            priority = current;
-        }
-    }
-
-    assert!(!main_part.is_empty());
-
-    if main_start == main_part {
+    let Some((main_start, _)) = id_string.split_once('_') else {
         return None;
-    }
+    };
 
-    match (prefix.is_empty(), priority.is_empty()) {
-        (false, false) => Some(format!("{prefix}/{main_start}_all@{priority}")), // should not happen...
-        (true, false) => Some(format!("{main_start}_all@{priority}")),
-        (false, true) => Some(format!("{prefix}/{main_start}_all")),
-        (true, true) => Some(format!("{main_start}_all")),
-    }
+    Some(QualifiedActionId {
+        id: ActionId::new(format!("{main_start}_all")).ok()?,
+        source: id.source.clone(),
+    })
 }
 
 fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &ActionMap) {
@@ -647,7 +580,10 @@ impl Configuration {
         })
     }
 
-    pub fn action<'a>(&'a self, name: &str) -> Option<&'a beautytips::ActionDefinition> {
+    pub fn action<'a>(
+        &'a self,
+        name: &QualifiedActionId,
+    ) -> Option<&'a beautytips::ActionDefinition> {
         self.action_map
             .get(name)
             .and_then(|index| self.actions.get(*index))
@@ -655,7 +591,7 @@ impl Configuration {
 
     pub fn named_actions<'a>(
         &'a self,
-        action_names: &[String],
+        action_names: &[QualifiedActionId],
     ) -> anyhow::Result<beautytips::ActionDefinitionIterator<'a>> {
         let mut indices = HashSet::new();
         for action_name in action_names {
@@ -674,11 +610,8 @@ impl Configuration {
         ))
     }
 
-    fn from_string(value: &str, source_name: &str) -> anyhow::Result<Configuration> {
-        assert!(!source_name.is_empty());
-        assert!(source_name.chars().all(|c| c.is_ascii_alphabetic()));
-
-        static PRIORITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+    fn from_string(value: &str, source_name: &ActionSource) -> anyhow::Result<Configuration> {
+        static PRIORITY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
         let priority = PRIORITY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -688,7 +621,7 @@ impl Configuration {
         let mut actions: Vec<_> = toml_config
             .actions
             .into_iter()
-            .map(|ad| map_toml_action(ad, source_name, priority))
+            .map(|ad| map_toml_action(ad, source_name))
             .collect::<anyhow::Result<_>>()?;
 
         actions.sort();
@@ -714,10 +647,7 @@ impl Configuration {
             .into_iter()
             .map(|ag| (ag.name, ag.actions))
             .try_fold(HashMap::new(), |mut acc, (v_id, v_val)| {
-                let mut v = v_val
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>();
+                let mut v = v_val.iter().collect::<Vec<_>>();
                 v.sort();
                 v.dedup();
 
@@ -732,22 +662,20 @@ impl Configuration {
                     .map(|id| map_id_to_index(id, &action_map, &mut unknown_actions))
                     .collect();
 
-                let old = acc.insert(v_id.to_string(), v.clone());
+                let qai = QualifiedActionId::new(v_id.clone());
+                let old = acc.insert(qai.clone(), v.clone());
                 if old.is_some() {
                     return Err(anyhow::anyhow!(format!(
-                        "Action group '{v_id}' defined twice in one config location"
+                        "Action group '{}' defined twice in one config location",
+                        qai.to_string()
                     )));
                 }
-                let old = acc.insert(format!("{source_name}/{v_id}"), v.clone());
+                let qai = QualifiedActionId::new_from_source(v_id, source_name.clone());
+                let old = acc.insert(qai.clone(), v.clone());
                 if old.is_some() {
                     return Err(anyhow::anyhow!(format!(
-                        "Action group '{source_name}/{v_id}' defined twice in one config location"
-                    )));
-                }
-                let old = acc.insert(format!("{v_id}@{priority}"), v);
-                if old.is_some() {
-                    return Err(anyhow::anyhow!(format!(
-                        "Action group '{v_id}@{priority}' defined twice in one config location"
+                        "Action group '{}' defined twice in one config location",
+                        qai.to_string()
                     )));
                 }
 
@@ -762,7 +690,7 @@ impl Configuration {
         })
     }
 
-    fn from_path(path: &Path, source_name: &str) -> anyhow::Result<Self> {
+    fn from_path(path: &Path, source_name: &ActionSource) -> anyhow::Result<Self> {
         let config_data =
             std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
 
@@ -773,7 +701,8 @@ impl Configuration {
 
 pub fn builtin() -> Configuration {
     let toml = include_str!("rules.toml");
-    let config = Configuration::from_string(toml, "builtin").expect("builtins should parse fine");
+    let config = Configuration::from_string(toml, &ActionSource::new_str("builtin").unwrap())
+        .expect("builtins should parse fine");
 
     let base = Configuration::default();
     base.merge(config).expect("builtins should merge just fine")
@@ -787,8 +716,11 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         .ok_or(anyhow::anyhow!("Config directory not found"))?;
     let config_file = config_dir.join("config.toml");
 
-    let user = Configuration::from_path(config_file.as_path(), "user")
-        .context("Failed to parse configuration file {config_file:?}")?;
+    let user = Configuration::from_path(
+        config_file.as_path(),
+        &ActionSource::new_str("user").unwrap(),
+    )
+    .context("Failed to parse configuration file {config_file:?}")?;
     base.merge(user)
 }
 

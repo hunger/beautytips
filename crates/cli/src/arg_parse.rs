@@ -5,6 +5,8 @@ use clap::{Args, Parser, Subcommand};
 
 use std::{ffi::OsString, path::PathBuf};
 
+use crate::config::QualifiedActionId;
+
 /// Where to get files to look at from
 #[derive(Clone, Debug, Args)]
 #[group(required = true, multiple = false)]
@@ -35,8 +37,8 @@ enum CliCommand {
     Run {
         #[command(flatten)]
         source: CliInputFiles,
-        #[arg(long = "action", num_args = 1.., value_name= "ACTION")]
-        actions: Vec<String>,
+        #[arg(long = "action", num_args = 1.., value_name = "ACTION")]
+        actions: Vec<QualifiedActionId>,
     },
 }
 
@@ -64,7 +66,7 @@ pub enum Command {
     ListActions { },
     RunActions {
         source: beautytips::InputFiles,
-        actions: Vec<String>,
+        actions: Vec<QualifiedActionId>,
     },
 }
 
