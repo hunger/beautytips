@@ -3,13 +3,10 @@
 
 use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::str::FromStr;
 use std::{collections::HashMap, fmt::Display, path::Path};
 
 use anyhow::Context;
-
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(try_from = "String", expecting = "an action id")]
-pub struct ActionId(String);
 
 const UNKNOWN_ACTION_OFFSET: usize = usize::MAX / 2;
 
@@ -48,12 +45,16 @@ fn map_index_to_id(
     }
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(try_from = "String", expecting = "an action id")]
+pub struct ActionId(String);
+
 impl ActionId {
     /// Create a new `ActionId`
     ///
     /// # Errors
     ///
-    /// Raise an invaliv configuration error if the action id contains anything
+    /// Raise an invalid configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
     pub fn new(input: String) -> anyhow::Result<Self> {
         if input
@@ -63,7 +64,7 @@ impl ActionId {
         {
             Err(anyhow::anyhow!("{input} is not a valid action id"))
         } else {
-            Ok(ActionId(input))
+            Ok(Self(input))
         }
     }
 
@@ -71,7 +72,7 @@ impl ActionId {
     ///
     /// # Errors
     ///
-    /// Raise an invaliv configuration error if the action id contains anything
+    /// Raise an invalid configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
     pub fn new_str(input: &str) -> crate::Result<Self> {
         Self::new(input.to_string())
@@ -88,7 +89,7 @@ impl TryFrom<&str> for ActionId {
     type Error = anyhow::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        ActionId::new_str(value)
+        Self::new_str(value)
     }
 }
 
@@ -96,7 +97,7 @@ impl TryFrom<String> for ActionId {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        ActionId::new(value)
+        Self::new(value)
     }
 }
 
@@ -104,7 +105,176 @@ impl std::str::FromStr for ActionId {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ActionId::new_str(s)
+        Self::new_str(s)
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(try_from = "String", expecting = "an action id")]
+pub struct ActionSource(String);
+
+impl ActionSource {
+    /// Create a new `ActionSource`
+    ///
+    /// # Errors
+    ///
+    /// Raise an invalid configuration error if the action id contains anything
+    /// but lowercase ASCII letters or '_'.
+    pub fn new(input: String) -> anyhow::Result<Self> {
+        if input
+            .chars()
+            .any(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit())
+            && !input.is_empty()
+        {
+            Err(anyhow::anyhow!("{input} is not a valid action source"))
+        } else {
+            Ok(Self(input))
+        }
+    }
+
+    /// Create a new `ActionSource`
+    ///
+    /// # Errors
+    ///
+    /// Raise an invalid configuration error if the action id contains anything
+    /// but lowercase ASCII letters or '_'.
+    pub fn new_str(input: &str) -> crate::Result<Self> {
+        Self::new(input.to_string())
+    }
+}
+
+impl Display for ActionSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<&str> for ActionSource {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new_str(value)
+    }
+}
+
+impl TryFrom<String> for ActionSource {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl std::str::FromStr for ActionSource {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::new_str(s)
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(try_from = "String", expecting = "an action id")]
+pub struct QualifiedActionId {
+    id: ActionId,
+    source: Option<ActionSource>,
+    priority: Option<u32>,
+}
+
+impl QualifiedActionId {
+    pub fn new_prioritized(id: ActionId, priority: u32) -> Self {
+        Self {
+            id,
+            source: None,
+            priority: Some(priority),
+        }
+    }
+
+    pub fn new_from_source(id: ActionId, source: ActionSource) -> Self {
+        Self {
+            id,
+            source: Some(source),
+            priority: None,
+        }
+    }
+
+    pub fn new(id: ActionId) -> Self {
+        Self {
+            id,
+            source: None,
+            priority: None,
+        }
+    }
+
+    /// Create a new `QualifiedActionId`
+    ///
+    /// # Errors
+    ///
+    /// Raise an invalid configuration error if the action id contains anything
+    /// but lowercase ASCII letters or '_'.
+    pub fn parse(input: String) -> anyhow::Result<Self> {
+        if let Some(separator) = input.find(&['/', '@']) {
+            if input.as_bytes()[separator] == b'/' {
+                let source = ActionSource::new_str(&input[..separator])?;
+                let id = ActionId::new_str(&input[separator + 1..])?;
+                Ok(Self::new_from_source(id, source))
+            } else {
+                let id = ActionId::new_str(&input[..separator])?;
+                let priority = u32::from_str(&input[separator + 1..])
+                    .map_err(|_| anyhow::anyhow!("Could not parse priority"))
+                    .context("Failed to parse qualified action id {input}")?;
+                Ok(Self::new_prioritized(id, priority))
+            }
+        } else {
+            let id = ActionId::new(input).context("Failed to parse qualified action id")?;
+            Ok(Self::new(id))
+        }
+    }
+
+    /// Create a new `ActionId`
+    ///
+    /// # Errors
+    ///
+    /// Raise an invalid configuration error if the action id contains anything
+    /// but lowercase ASCII letters or '_'.
+    pub fn parse_str(input: &str) -> crate::Result<Self> {
+        Self::parse(input.to_string())
+    }
+}
+
+impl Display for QualifiedActionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(s) = &self.source {
+            write!(f, "{s}/{}", self.id)
+        } else if let Some(p) = self.priority {
+            write!(f, "{}@{p}", self.id)
+        } else {
+            write!(f, "{}", self.id)
+        }
+    }
+}
+
+impl TryFrom<&str> for QualifiedActionId {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::parse_str(value)
+    }
+}
+
+impl TryFrom<String> for QualifiedActionId {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(value)
+    }
+}
+
+impl std::str::FromStr for QualifiedActionId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse_str(s)
     }
 }
 
@@ -128,7 +298,7 @@ type ActionMap = HashMap<String, usize>;
 #[serde(deny_unknown_fields)]
 struct TomlActionGroup {
     pub name: ActionId,
-    pub actions: Vec<ActionId>,
+    pub actions: Vec<QualifiedActionId>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -149,7 +319,7 @@ pub struct Configuration {
 }
 
 fn merge_action_definition(
-    _base: &beautytips::ActionDefinition,
+    base: &beautytips::ActionDefinition,
     other: &beautytips::ActionDefinition,
 ) -> anyhow::Result<beautytips::ActionDefinition> {
     // TODO: Actually merge ;-)
@@ -266,8 +436,8 @@ fn merge_action_groups(
                 }),
         )
         .try_fold(
-            HashMap::new(),
-            |mut acc, (k, v)| -> anyhow::Result<HashMap<_, _>> {
+            ActionGroups::new(),
+            |mut acc, (k, v)| -> anyhow::Result<ActionGroups> {
                 let v = v?;
                 if v.is_empty() {
                     if acc.remove_entry(&k).is_none() {
@@ -346,8 +516,8 @@ fn map_toml_action(
     })
 }
 
-fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> HashMap<String, usize> {
-    let mut map: HashMap<String, usize> = actions
+fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
+    let mut map: ActionMap = actions
         .iter()
         .enumerate()
         .filter_map(|(index, d)| {
@@ -441,7 +611,7 @@ fn group_action_id(id: &str) -> Option<String> {
     }
 }
 
-fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &HashMap<String, usize>) {
+fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &ActionMap) {
     for (k, v) in action_map
         .iter()
         .filter_map(|(k, v)| group_action_id(k).map(|id| (id, *v)))
@@ -458,7 +628,7 @@ impl Configuration {
         let mut actions: Vec<beautytips::ActionDefinition> = merge_actions(&self, &other)?;
 
         actions.sort();
-        let action_map: HashMap<_, _> = populate_action_map(&actions);
+        let action_map: ActionMap = populate_action_map(&actions);
         let action_groups = {
             let mut ags = merge_action_groups(&self, &other, &action_map)?;
 
@@ -481,25 +651,6 @@ impl Configuration {
         self.action_map
             .get(name)
             .and_then(|index| self.actions.get(*index))
-    }
-
-    pub fn action_group<'a>(
-        &'a self,
-        name: &str,
-    ) -> Option<beautytips::ActionDefinitionIterator<'a>> {
-        let indices = self.action_groups.get(name)?.iter().copied().collect();
-        Some(beautytips::ActionDefinitionIterator::new(
-            &self.actions,
-            indices,
-        ))
-    }
-
-    pub fn action_count(&self) -> usize {
-        self.actions.len()
-    }
-
-    pub fn action_group_count(&self) -> usize {
-        self.action_groups.len()
     }
 
     pub fn named_actions<'a>(
