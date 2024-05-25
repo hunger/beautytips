@@ -721,11 +721,13 @@ mod tests {
     #[test]
     fn test_configuration_from_str_ok() {
         let base = r#"[[actions]]
-name = "test1"
+name = "test_1"
+description = "foo"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
@@ -734,42 +736,52 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        let base: Configuration = base.try_into().unwrap();
+        let base =
+            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
 
-        assert_eq!(base.action_count(), 2);
-        assert!(base.action("test1").is_some());
-        assert!(base.action("test2").is_some());
-        assert_eq!(base.action_group_count(), 1);
+        assert_eq!(base.actions.len(), 2);
+        assert!(base
+            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
+            .is_some());
+        assert!(base
+            .action(&QualifiedActionId::new(ActionId::new_str("test_2").unwrap()))
+            .is_some());
+        assert!(base
+            .action(&QualifiedActionId::new(ActionId::new_str("test_3").unwrap()))
+            .is_none());
+        assert_eq!(base.action_groups.len(), 2);
     }
 
     #[test]
     fn test_configuration_from_str_empty_ok() {
         let base = "";
 
-        let base: Configuration = base.try_into().unwrap();
+        let base =
+            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
 
-        assert_eq!(base.action_count(), 0);
-        assert_eq!(base.action_group_count(), 0);
+        assert_eq!(base.actions.len(), 0);
+        assert_eq!(base.action_groups.len(), 0);
     }
 
     #[test]
     fn test_configuration_from_str_invalid_top_level_key() {
         let base = r#"[[action]]
-name = "test1"
+name = "test_1"
 command = "foobar x y z"
 "#;
 
-        assert!(TryInto::<Configuration>::try_into(base).is_err());
+        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_action_key() {
         let base = r#"[[actions]]
-name = "test1"
+name = "test_1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 id = "foobar"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
@@ -779,17 +791,18 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(TryInto::<Configuration>::try_into(base).is_err());
+        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_action_group_key() {
         let base = r#"[[actions]]
-name = "test1"
+name = "test_1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
@@ -799,7 +812,7 @@ id = "foobar"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(TryInto::<Configuration>::try_into(base).is_err());
+        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
     }
 
     #[test]
@@ -809,7 +822,8 @@ name = "test-1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
@@ -818,17 +832,18 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(TryInto::<Configuration>::try_into(base).is_err());
+        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_glob() {
         let base = r#"[[actions]]
-name = "test1"
+name = "test_1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**a", "**/Cargo.toml" ]
 
@@ -837,99 +852,132 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(TryInto::<Configuration>::try_into(base).is_err());
+        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
     }
 
     #[test]
     fn test_configuration_merge_empty() {
         let base = r#"[[actions]]
-name = "test1"
+description = "foo"
+name = "test_1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "test3_b"
+name = "test_3b"
+description = "foo"
 command = "do something"
 inputs.files = [ "**/*.slint", "**/*.rs" ]
 
 [[action_groups]]
 name = "test"
-actions = [ "test1", "test2" ]
+actions = [ "test_1", "test_2" ]
 "#;
 
-        let base: Configuration = base.try_into().unwrap();
+        let base =
+            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
 
         let other: Configuration = Configuration::default();
 
         let merge = base.merge(other).unwrap();
 
-        assert_eq!(merge.action_count(), 3);
-        assert!(merge.action("test1").is_some());
-        assert!(merge.action("test3_b").is_some());
-        assert!(merge.action("test2").is_some());
-        assert_eq!(merge.action_group_count(), 1);
-        let it = merge.action_group("test").unwrap();
+        assert_eq!(merge.actions.len(), 3);
+        assert!(merge
+            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
+            .is_some());
+        assert!(merge
+            .action(&QualifiedActionId::new(
+                ActionId::new_str("test_3b").unwrap()
+            ))
+            .is_some());
+        assert!(merge
+            .action(&QualifiedActionId::new(ActionId::new_str("test_2").unwrap()))
+            .is_some());
+        eprintln!("merge action groups: {:?}", merge.action_groups.keys());
+        assert_eq!(merge.action_groups.len(), 4);
+        let it = merge
+            .named_actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
+            .unwrap();
         assert_eq!(it.count(), 2);
     }
 
     #[test]
     fn test_configuration_merge() {
         let base = r#"[[actions]]
-name = "test1"
+name = "test_1"
+description = "foo"
 command = "foobar x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "test3_b"
+name = "test_3b"
+description = "foo"
 command = "do something"
 inputs.files = [ "**/*.slint", "**/*.rs" ]
 
 [[action_groups]]
 name = "test"
-actions = [ "test1", "test2" ]
+actions = [ "test_1", "test_2" ]
 "#;
 
-        let base: Configuration = base.try_into().unwrap();
+        let base =
+            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
 
         let other = r#"[[actions]]
-name = "test3_o"
+name = "test_3o"
+description = "foo"
 command = "barfoo x y z"
 
 [[actions]]
-name = "test2"
+name = "test_2"
+description = "foo"
 command = "/dev/null"
 
 [[actions]]
-name = "test1"
+name = "test_1"
+description = "foo"
 command = "barfoo x y z"
 
 [[action_groups]]
 name = "test"
-actions = [ "test1", "test3_o", "test3_b" ]
+actions = [ "test_1", "test_3o", "test_3b" ]
 
 [[action_groups]]
 name = "test_group"
-actions = [ "test3_b" ]
+actions = [ "test_3b" ]
 "#;
-        let other: Configuration = other.try_into().unwrap();
+        let other =
+            Configuration::from_string(other, &ActionSource::new_str("test2").unwrap()).unwrap();
 
         let merge = base.merge(other).unwrap();
 
-        assert_eq!(merge.action_count(), 3);
-        assert!(merge.action("test1").is_some());
-        assert!(merge.action("test3_b").is_some());
-        assert!(merge.action("test3_o").is_some());
-        assert_eq!(merge.action_group_count(), 2);
-        let mut it = merge.action_group("test_group").unwrap();
-        assert_eq!(it.next().unwrap().id.as_str(), "test3_b");
+        assert_eq!(merge.actions.len(), 5);
+        assert!(merge
+            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
+            .is_some());
+        assert!(merge
+            .action(&QualifiedActionId::new(
+                ActionId::new_str("test_3b").unwrap()
+            ))
+            .is_some());
+        assert!(merge
+            .action(&QualifiedActionId::new(ActionId::new_str("test_3o").unwrap()))
+            .is_some());
+        assert_eq!(merge.action_groups.len(), 8);
+        let mut it = merge
+            .named_actions(&[QualifiedActionId::new(ActionId::new_str("test_group").unwrap())])
+            .unwrap();
+        assert_eq!(it.next().unwrap().id.as_str(), "test_3b");
         assert!(it.next().is_none());
     }
 
@@ -937,9 +985,7 @@ actions = [ "test3_b" ]
     fn test_builtins() {
         let builtin = builtin();
 
-        assert!(builtin.action_count() > 0);
-        assert!(builtin.action_group_count() > 0);
-        let it = builtin.action_group("test_me").unwrap();
-        assert!(it.count() > 1);
+        assert!(!builtin.actions.is_empty());
+        assert!(!builtin.action_groups.is_empty());
     }
 }

@@ -30,7 +30,11 @@ fn main() -> Result<()> {
 
     match command.command {
         arg_parse::Command::Builtin { action, arguments } => {
-            let exit_code = builtin_commands::run_builtin_command(&action, &arguments)?;
+            let exit_code = builtin_commands::run_builtin_command(
+                &action,
+                &arguments,
+                command.verbosity_level,
+            )?;
             std::process::exit(exit_code);
         }
         arg_parse::Command::ListActions {} => {
