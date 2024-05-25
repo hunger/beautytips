@@ -42,13 +42,19 @@ impl Ord for ActionDefinition {
 #[derive(Clone, Debug)]
 pub struct ActionDefinitionIterator<'a> {
     actions: &'a [ActionDefinition],
-    indices: HashSet<usize>,
+    indices: Vec<usize>,
     current_item: usize,
 }
 
 impl<'a> ActionDefinitionIterator<'a> {
     #[must_use]
     pub fn new(actions: &'a [ActionDefinition], indices: HashSet<usize>) -> Self {
+        let indices = {
+            let mut i: Vec<usize> = Vec::from_iter(indices);
+            i.sort_unstable();
+            i
+        };
+
         Self {
             actions,
             indices,
@@ -61,16 +67,9 @@ impl<'a> Iterator for ActionDefinitionIterator<'a> {
     type Item = &'a ActionDefinition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.current_item < self.actions.len() {
-            let cur = self.current_item;
-            self.current_item += 1;
-
-            if self.indices.contains(&cur) {
-                let cur_item = unsafe { self.actions.get_unchecked(cur) };
-                return Some(cur_item);
-            }
-        }
-        None
+        let cur = self.current_item;
+        self.current_item += 1;
+        self.indices.get(cur).and_then(|i| self.actions.get(*i))
     }
 }
 
@@ -123,7 +122,7 @@ async fn run_single_action(
     if std::env::var("SKIP")
         .unwrap_or_default()
         .split('\n')
-        .any(|s| s == action.id.to_string())
+        .any(|s| s == action.id)
     {
         tracing::trace!("Skipping '{}'", action.id);
         report(
@@ -256,7 +255,12 @@ pub async fn run(
     let cache_handle = inputs::setup_input_cache(current_directory.clone(), files);
     let mut join_set = tokio::task::JoinSet::new();
 
-    for a in actions {
+    // parallel phase:
+    tracing::trace!("Entering parallel run phase");
+    for a in actions
+        .clone()
+        .filter(|ad| ad.id.as_str().starts_with("check_"))
+    {
         let cd = current_directory.clone();
         let tx = sender.clone();
 
@@ -265,16 +269,27 @@ pub async fn run(
         join_set.spawn(run_single_action(cd, tx, a, cache_handle.query()));
     }
 
-    tracing::trace!("All actions started");
-
-    drop(sender);
-
     tracing::trace!("Joining actions: {}", join_set.len());
 
     while let Some(r) = join_set.join_next().await {
         tracing::debug!("joined => in JS: {}", join_set.len());
         r.expect("Join Error found")?;
     }
+
+    // sequential phase:
+    tracing::trace!("Entering sequential run phase");
+    for a in actions.filter(|ad| !ad.id.as_str().starts_with("check_")) {
+        let cd = current_directory.clone();
+        let tx = sender.clone();
+
+        tracing::trace!("Spawning task for action {}", a.id);
+
+        run_single_action(cd, tx, a, cache_handle.query()).await?;
+    }
+
+    tracing::trace!("All actions started");
+
+    drop(sender);
 
     cache_handle.finish().await;
 

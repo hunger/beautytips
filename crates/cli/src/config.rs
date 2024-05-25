@@ -514,7 +514,7 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
         .filter_map(|(index, d)| {
             (d.command.len() != 1
                 || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
-            .then_some((QualifiedActionId::from_def(&d), index))
+            .then_some((QualifiedActionId::from_def(d), index))
         })
         .collect();
     map.extend(
@@ -524,19 +524,13 @@ fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
             .map(|(index, d)| (QualifiedActionId::from_def_with_source(d), index)),
     );
 
-    eprintln!("*** Action Map:");
-    for k in map.keys() {
-        eprintln!("     {k}");
-    }
     map
 }
 
 fn group_action_id(id: &QualifiedActionId) -> Option<QualifiedActionId> {
     let id_string = id.id.to_string();
 
-    let Some((main_start, _)) = id_string.split_once('_') else {
-        return None;
-    };
+    let (main_start, _) = id_string.split_once('_')?;
 
     Some(QualifiedActionId {
         id: ActionId::new(format!("{main_start}_all")).ok()?,
@@ -611,10 +605,6 @@ impl Configuration {
     }
 
     fn from_string(value: &str, source_name: &ActionSource) -> anyhow::Result<Configuration> {
-        static PRIORITY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
-        let priority = PRIORITY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         let toml_config: TomlConfiguration =
             toml::from_str(value).context("Failed to parse toml")?;
 

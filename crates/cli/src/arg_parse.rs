@@ -24,9 +24,9 @@ struct CliInputFiles {
 #[derive(Clone, Debug, Subcommand)]
 #[command(rename_all = "kebab-case")]
 enum CliCommand {
-    BuiltinCommand {
+    Builtin {
         action: String,
-        arguments: Vec<OsString>,        
+        arguments: Vec<OsString>,
     },
     ListActions,
     /// Doc comment
@@ -37,7 +37,7 @@ enum CliCommand {
     Run {
         #[command(flatten)]
         source: CliInputFiles,
-        #[arg(long = "action", num_args = 1.., value_name = "ACTION")]
+        #[arg(long = "actions", num_args = 1.., value_name = "ACTION")]
         actions: Vec<QualifiedActionId>,
     },
 }
@@ -56,14 +56,14 @@ struct Cli {
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    BuiltinCommand {
+    Builtin {
         action: String,
         arguments: Vec<OsString>,
     },
     ListFiles {
         source: beautytips::InputFiles,
     },
-    ListActions { },
+    ListActions {},
     RunActions {
         source: beautytips::InputFiles,
         actions: Vec<QualifiedActionId>,
@@ -100,8 +100,8 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
     let cli = Cli::parse();
 
     let command = match cli.action {
-        CliCommand::BuiltinCommand { action, arguments } => Command::BuiltinCommand { action, arguments, },
-        CliCommand::ListActions => Command::ListActions { },
+        CliCommand::Builtin { action, arguments } => Command::Builtin { action, arguments },
+        CliCommand::ListActions => Command::ListActions {},
         CliCommand::ListFiles { source } => Command::ListFiles {
             source: generate_input_files(&source)?,
         },
@@ -116,9 +116,4 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
         verbosity_level: cli.verbosity_level,
         command,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use clap::error::ErrorKind;
 }

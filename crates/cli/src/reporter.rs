@@ -34,16 +34,40 @@ impl Reporter {
 }
 
 fn to_str(input: &[u8]) -> String {
-    let indent = "    ".to_string();
+    let input = if input.ends_with(b"\n") {
+        &input[..input.len() - 1]
+    } else {
+        input
+    };
+
     let s = String::from_utf8_lossy(input).trim().to_string();
     if s.is_empty() {
         return s;
     }
+
+    let indent = "    ";
     let s = s
         .split('\n')
         .collect::<Vec<_>>()
         .join(&format!("\n{indent}"));
     format!("{indent}{s}")
+}
+
+fn stdout_and_err_to_str(stdout: &[u8], stderr: &[u8]) -> String {
+    let mut output = to_str(stdout);
+    if output.is_empty() {
+        output = to_str(stderr);
+    } else {
+        output = format!("{output}\n{}", to_str(stderr));
+    }
+    if !output.is_empty() {
+        output = format!(
+            "\n{}{output}",
+            termion::color::Fg(termion::color::LightBlack)
+        );
+    }
+
+    output
 }
 
 impl beautytips::Reporter for Reporter {
@@ -59,18 +83,16 @@ impl beautytips::Reporter for Reporter {
         self.running = self
             .running
             .iter()
-            .filter(|id| *id != &action_id.to_string())
+            .filter(|id| *id != &action_id)
             .cloned()
             .collect();
 
         match result {
             beautytips::ActionResult::Ok { stdout, stderr } => {
+                let output = stdout_and_err_to_str(&stdout, &stderr);
                 println!(
-                    "{}✅ {action_id} [OK]\n{}{}{}{}",
+                    "{}✅ {action_id} [OK]{output}{}",
                     termion::color::Fg(termion::color::Green),
-                    termion::color::Fg(termion::color::LightBlack),
-                    to_str(&stdout),
-                    to_str(&stderr),
                     termion::color::Fg(termion::color::Reset)
                 );
             }
@@ -89,12 +111,10 @@ impl beautytips::Reporter for Reporter {
                 );
             }
             beautytips::ActionResult::Warn { stdout, stderr } => {
+                let output = stdout_and_err_to_str(&stdout, &stderr);
                 println!(
-                    "{}💡 {action_id} [WARN]\n{}{}{}{}",
+                    "{}💡 {action_id} [WARN]\n{output}{}",
                     termion::color::Fg(termion::color::LightYellow),
-                    termion::color::Fg(termion::color::LightBlack),
-                    to_str(&stdout),
-                    to_str(&stderr),
                     termion::color::Fg(termion::color::Reset)
                 );
             }

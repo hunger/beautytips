@@ -29,10 +29,10 @@ fn main() -> Result<()> {
         .init();
 
     match command.command {
-        arg_parse::Command::BuiltinCommand { action, arguments } => {
+        arg_parse::Command::Builtin { action, arguments } => {
             builtin_commands::run_builtin_command(&action, &arguments)
         }
-        arg_parse::Command::ListActions {  } => {
+        arg_parse::Command::ListActions {} => {
             for ag in config.action_groups.keys() {
                 println!("{ag} (group)");
             }
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
             }
 
             Ok(())
-        },
+        }
         arg_parse::Command::ListFiles { source } => {
             let (root_dir, files) =
                 beautytips::collect_input_files(std::env::current_dir()?, source)?;
