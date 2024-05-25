@@ -113,7 +113,7 @@ impl beautytips::Reporter for Reporter {
             beautytips::ActionResult::Warn { stdout, stderr } => {
                 let output = stdout_and_err_to_str(&stdout, &stderr);
                 println!(
-                    "{}💡 {action_id} [WARN]\n{output}{}",
+                    "{}💡 {action_id} [WARN]{output}{}",
                     termion::color::Fg(termion::color::LightYellow),
                     termion::color::Fg(termion::color::Reset)
                 );

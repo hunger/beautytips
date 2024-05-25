@@ -1,7 +1,7 @@
 [[actions]]
 name = "check_large_file"
 description = "Check for large files in commit"
-command = "{BEAUTY_TIPS} builtin foo -- --size=50k -- {files...}"
+command = "{BEAUTY_TIPS} builtin check-large-files -- --size=50k -- {{files...}}"
 
 [[actions]]
 name = "check_cargo_fmt"

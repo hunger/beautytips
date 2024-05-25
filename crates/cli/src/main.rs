@@ -30,7 +30,8 @@ fn main() -> Result<()> {
 
     match command.command {
         arg_parse::Command::Builtin { action, arguments } => {
-            builtin_commands::run_builtin_command(&action, &arguments)
+            let exit_code = builtin_commands::run_builtin_command(&action, &arguments)?;
+            std::process::exit(exit_code);
         }
         arg_parse::Command::ListActions {} => {
             for ag in config.action_groups.keys() {
