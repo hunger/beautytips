@@ -87,7 +87,7 @@ async fn collect_input_files_impl(
     for f in &files {
         let meta = tokio::fs::metadata(&f)
             .await
-            .map_err(|e| Error::new_io_error(&format!("Failed to get metadata for {:?}", f), e))?;
+            .map_err(|e| Error::new_io_error(&format!("Failed to get metadata for {f:?}"), e))?;
         if meta.is_dir() {
             continue;
         }

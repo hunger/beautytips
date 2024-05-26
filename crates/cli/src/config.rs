@@ -143,15 +143,12 @@ pub struct QualifiedActionId {
 }
 
 impl QualifiedActionId {
-    pub fn from_def_with_source(action_definition: &beautytips::ActionDefinition) -> Self {
+    pub fn from_def(action_definition: &beautytips::ActionDefinition) -> Self {
         Self::new_from_source(
             ActionId::new_str(&action_definition.id).expect("This is a valid action id"),
             ActionSource::new_str(&action_definition.source)
                 .expect("This is a valid action source"),
         )
-    }
-    pub fn from_def(action_definition: &beautytips::ActionDefinition) -> Self {
-        Self::new(ActionId::new_str(&action_definition.id).expect("This is a valid action id"))
     }
 
     pub fn new_from_source(id: ActionId, source: ActionSource) -> Self {
@@ -451,7 +448,7 @@ fn add_action(
     };
 
     let description = std::mem::take(&mut update.description).unwrap_or_default();
-    let command = map_command(&command).context("Processing command of {qid}")?;
+    let command = map_command(command).context("Processing command of {qid}")?;
     let expected_exit_code = update.exit_code.unwrap_or(0);
     let input_filters = if let Some(inputs) = &update.inputs {
         map_input_filters(inputs)?
@@ -562,17 +559,6 @@ fn map_input_filters(
         .context("Parsing input filters for action '{id}'")
 }
 
-fn group_action_id(id: &QualifiedActionId) -> Option<QualifiedActionId> {
-    let id_string = id.id.to_string();
-
-    let (main_start, _) = id_string.split_once('_')?;
-
-    Some(QualifiedActionId {
-        id: ActionId::new(format!("{main_start}_all")).ok()?,
-        source: id.source.clone(),
-    })
-}
-
 fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyhow::Result<()> {
     for (k, v) in action_groups {
         for i in v {
@@ -587,15 +573,6 @@ fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyho
     Ok(())
 }
 
-fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &ActionMap) {
-    // for (k, v) in action_map
-    //     .iter()
-    //     .filter_map(|(k, v)| group_action_id(k).map(|id| (id, *v)))
-    // {
-    //     action_groups.entry(k).or_default().push(v);
-    // }
-}
-
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(mut self, mut other: ConfigurationSource) -> anyhow::Result<Self> {
@@ -605,13 +582,7 @@ impl Configuration {
             &mut other,
         )?;
 
-        let action_groups = {
-            let mut ags = add_new_action_groups(std::mem::take(&mut self.action_groups), &other);
-
-            add_auto_groups(&mut ags, &action_map);
-
-            ags
-        };
+        let action_groups = add_new_action_groups(std::mem::take(&mut self.action_groups), &other);
 
         validate_state(&action_groups, &action_map)?;
 
