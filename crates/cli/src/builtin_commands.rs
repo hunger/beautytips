@@ -275,28 +275,31 @@ impl IsMixedLineEnding {
             .enumerate()
             .max_by(|(_, a), (_, b)| a.cmp(b))
             .map_or(0, |(i, _)| i);
-        eprintln!("Final counts: {:?} => {}", self.end_counts, LINE_ENDING_NAMES[majority_index]);
+        eprintln!(
+            "Final counts: {:?} => {}",
+            self.end_counts, LINE_ENDING_NAMES[majority_index]
+        );
         (is_mixed, majority_index)
     }
 }
 
 fn detect_mixed_line_endings(contents: &[u8]) -> (bool, bool, usize) {
-        let mut binary_checker = IsBinary::default();
-        let mut mixed_line_end_checker = IsMixedLineEnding::default();
+    let mut binary_checker = IsBinary::default();
+    let mut mixed_line_end_checker = IsMixedLineEnding::default();
 
-        for b in contents {
-            if binary_checker.is_binary(*b) {
-                break;
-            }
-            mixed_line_end_checker.count_line_endings(*b);
+    for b in contents {
+        if binary_checker.is_binary(*b) {
+            break;
         }
+        mixed_line_end_checker.count_line_endings(*b);
+    }
 
-        if binary_checker.final_verdict() {
-            (true, false, 0)
-        } else {
-            let (mixed, index) = mixed_line_end_checker.final_verdict();
-            (false, mixed, index)
-        }
+    if binary_checker.final_verdict() {
+        (true, false, 0)
+    } else {
+        let (mixed, index) = mixed_line_end_checker.final_verdict();
+        (false, mixed, index)
+    }
 }
 
 fn handle_mixed_line_endings(
@@ -332,7 +335,6 @@ fn handle_mixed_line_endings(
         let mut contents = vec![];
         buf.read_to_end(&mut contents)
             .context("Failed to read data from file")?;
-
 
         let (is_binary, is_mixed, mayority_index) = detect_mixed_line_endings(&contents);
 

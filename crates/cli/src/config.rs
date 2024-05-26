@@ -7,46 +7,6 @@ use std::{collections::HashMap, fmt::Display, path::Path};
 
 use anyhow::Context;
 
-const UNKNOWN_ACTION_OFFSET: usize = usize::MAX / 2;
-
-fn map_id_to_index(
-    id: &QualifiedActionId,
-    action_map: &ActionMap,
-    unknown_actions: &mut UnknownActionsVec,
-) -> usize {
-    let action_index = action_map.get(id);
-    if let Some(ai) = action_index {
-        *ai
-    } else {
-        let unknown_pos = unknown_actions.iter().position(|s| s == id);
-        if let Some(up) = unknown_pos {
-            up + UNKNOWN_ACTION_OFFSET
-        } else {
-            let up = unknown_actions.len();
-            unknown_actions.push(id.clone());
-            up + UNKNOWN_ACTION_OFFSET
-        }
-    }
-}
-
-fn map_index_to_id(
-    index: usize,
-    actions: &[beautytips::ActionDefinition],
-    unknown_actions: &[QualifiedActionId],
-) -> QualifiedActionId {
-    if index < UNKNOWN_ACTION_OFFSET {
-        QualifiedActionId::new(
-            ActionId::new_str(&actions.get(index).expect("This index had to be valid").id)
-                .expect("This was valid before"),
-        )
-    } else {
-        unknown_actions
-            .get(index - UNKNOWN_ACTION_OFFSET)
-            .expect("This index had to be valid")
-            .clone()
-    }
-}
-
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
@@ -267,26 +227,38 @@ impl std::str::FromStr for QualifiedActionId {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-struct TomlActionDefinition {
-    pub name: ActionId,
-    pub description: String,
-    #[serde(default)]
-    pub command: String,
-    #[serde(default)]
-    pub exit_code: i32,
-    #[serde(default)]
-    pub inputs: HashMap<String, Vec<String>>,
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MergeAction {
+    Hide,
+    Change,
+    #[default]
+    Add,
 }
 
-type ActionGroups = HashMap<QualifiedActionId, Vec<usize>>;
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct TomlActionDefinition {
+    pub name: ActionId,
+    #[serde(default)]
+    pub merge: MergeAction,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub inputs: Option<HashMap<String, Vec<String>>>,
+}
+
+type ActionGroups = HashMap<QualifiedActionId, Vec<QualifiedActionId>>;
 type ActionMap = HashMap<QualifiedActionId, usize>;
 type UnknownActionsVec = Vec<QualifiedActionId>;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TomlActionGroup {
+pub struct TomlActionGroup {
     pub name: ActionId,
     pub actions: Vec<QualifiedActionId>,
 }
@@ -304,180 +276,272 @@ struct TomlConfiguration {
 pub struct Configuration {
     pub action_groups: ActionGroups,
     pub actions: Vec<beautytips::ActionDefinition>,
-    unknown_actions: UnknownActionsVec,
     pub action_map: ActionMap,
 }
 
-fn merge_action_definition(
-    base: &beautytips::ActionDefinition,
-    other: &beautytips::ActionDefinition,
-) -> anyhow::Result<beautytips::ActionDefinition> {
-    // TODO: Actually merge ;-)
-    Ok(other.clone())
+#[derive(Debug)]
+pub struct ConfigurationSource {
+    pub source: ActionSource,
+    pub action_groups: Vec<TomlActionGroup>,
+    pub actions: Vec<TomlActionDefinition>,
 }
 
-fn merge_actions(
-    this: &Configuration,
-    other: &Configuration,
-) -> anyhow::Result<Vec<beautytips::ActionDefinition>> {
-    #[derive(Debug)]
-    enum ActionState<T> {
-        Add(T),
-        Change(T, T),
-        Remove(T),
-    }
+impl ConfigurationSource {
+    fn from_string(value: &str, source: ActionSource) -> anyhow::Result<Self> {
+        let mut toml_config: TomlConfiguration =
+            toml::from_str(value).context("Failed to parse toml")?;
 
-    other
-        .actions
-        .iter()
-        .map(|definition| {
-            if let Some(sa) = this.action(&QualifiedActionId::from_def(definition)) {
-                if definition.command.len() == 1
-                    && definition.command.first() == Some(&"/dev/null".to_string())
-                {
-                    ActionState::Remove(definition.clone())
-                } else {
-                    ActionState::Change(sa.clone(), definition.clone())
+        let actions = std::mem::take(&mut toml_config.actions);
+
+        {
+            let mut known_names = HashSet::new();
+
+            for d in &actions {
+                if !known_names.insert(d.name.clone()) {
+                    return Err(anyhow::anyhow!(format!(
+                        "Duplicate action \'{}\' found",
+                        d.name
+                    )));
                 }
-            } else {
-                ActionState::Add(definition.clone())
-            }
-        })
-        .chain(this.actions.iter().filter_map(|definition| {
-            if other
-                .action(&QualifiedActionId::from_def(definition))
-                .is_some()
-            {
-                None
-            } else {
-                Some(ActionState::Add(definition.clone()))
-            }
-        }))
-        .map(|ad| match ad {
-            ActionState::Add(d) => Ok(d),
-            ActionState::Change(sd, od) => merge_action_definition(&sd, &od),
-            ActionState::Remove(d) => {
-                if d.expected_exit_code != 0 || !d.input_filters.is_empty() {
-                    Err(anyhow::anyhow!(format!(
-                        "Removal of '{}' failed: Too many fields",
-                        d.id
-                    )))
-                } else {
-                    Ok(d)
-                }
-            }
-        })
-        .collect::<anyhow::Result<_>>()
-}
-
-fn merge_action_groups(
-    this: &Configuration,
-    other: &Configuration,
-    action_map: &ActionMap,
-) -> anyhow::Result<ActionGroups> {
-    this.action_groups
-        .iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                v.iter()
-                    .map(|index| map_index_to_id(*index, &this.actions, &this.unknown_actions))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .map(|(k, v)| {
-            (
-                k,
-                Ok(v.into_iter()
-                    .filter_map(|id| {
-                        let index = map_id_to_index(&id, action_map, &mut vec![]);
-                        // ignore unknwon actions here: They were removed by the merged config, which is fine
-                        (index < UNKNOWN_ACTION_OFFSET).then_some(index)
-                    })
-                    .collect::<Vec<_>>()),
-            )
-        })
-        .chain(
-            other
-                .action_groups
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        v.iter()
-                            .map(|index| {
-                                map_index_to_id(*index, &other.actions, &other.unknown_actions)
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        v.into_iter()
-                            .filter_map(|id| {
-                                let index = map_id_to_index(&id, action_map, &mut vec![]);
-                                // ignore unknwon actions here: They were removed by the merged config, which is fine
-                                (index < UNKNOWN_ACTION_OFFSET)
-                                    .then_some(Ok(index))
-                                    .or(Some(Err(anyhow::anyhow!(format!(
-                                        "Unknown action '{id}' in action group '{k}'"
-                                    )))))
-                            })
-                            .collect::<anyhow::Result<Vec<_>>>(),
-                    )
-                }),
-        )
-        .try_fold(
-            ActionGroups::new(),
-            |mut acc, (k, v)| -> anyhow::Result<ActionGroups> {
-                let v = v?;
-                if v.is_empty() {
-                    if acc.remove_entry(&k).is_none() {
-                        acc.insert(k, vec![]); // base used to define something and is empty now... Keep this for other to extend.
-                    }
-                } else {
-                    let entry = acc.entry(k);
-                    entry
-                        .and_modify(|ov| {
-                            ov.extend(v.iter());
-                            ov.sort_unstable();
-                            ov.dedup();
-                        })
-                        .or_insert(v);
-                }
-                Ok(acc)
-            },
-        )
-}
-
-fn map_toml_action(
-    ad: TomlActionDefinition,
-    source_name: &ActionSource,
-) -> anyhow::Result<beautytips::ActionDefinition> {
-    let id = ad.name.to_string();
-
-    let command = {
-        let mut command = shell_words::split(ad.command.trim()).context(format!(
-            "Failed to parse command '{}' of action '{id}'",
-            ad.command
-        ))?;
-
-        if let Some(executable) = command.first() {
-            if executable == "{BEAUTY_TIPS}" {
-                command[0] = std::env::current_exe()
-                    .context("Failed to get beauty_tips binary location")?
-                    .to_string_lossy()
-                    .to_string();
             }
         }
 
-        command
+        let action_groups = std::mem::take(&mut toml_config.action_groups);
+
+        {
+            let mut known_names = HashSet::new();
+
+            for d in &action_groups {
+                if !known_names.insert(d.name.clone()) {
+                    return Err(anyhow::anyhow!(format!(
+                        "Duplicate action group \'{}\' found",
+                        d.name
+                    )));
+                }
+            }
+        }
+
+        Ok(Self {
+            source,
+            action_groups,
+            actions,
+        })
+    }
+
+    fn from_path(path: &Path, source_name: ActionSource) -> anyhow::Result<Self> {
+        let config_data =
+            std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
+
+        Self::from_string(config_data.as_str(), source_name)
+            .context("Failed to parse toml file {value:?}")
+    }
+}
+
+fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
+    let qid = QualifiedActionId::new(action.name.clone());
+    if action.description.is_some()
+        || action.command.is_some()
+        || action.exit_code.is_some()
+        || action.inputs.is_some()
+    {
+        return Err(anyhow::anyhow!(format!(
+            "{qid} is hidding an existing action, but has extra keys set"
+        )));
+    }
+    if action_map.insert(qid.clone(), usize::MAX).is_none() {
+        return Err(anyhow::anyhow!(format!(
+            "{qid} is hidding an action that does not exist"
+        )));
+    }
+
+    Ok(())
+}
+
+fn change_action(
+    update: &mut TomlActionDefinition,
+    source: &ActionSource,
+    actions: &mut Vec<beautytips::ActionDefinition>,
+    action_map: &mut ActionMap,
+) -> anyhow::Result<()> {
+    let qid = QualifiedActionId::new(update.name.clone());
+    let sqid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+
+    if update.description.is_none()
+        && update.command.is_none()
+        && update.exit_code.is_none()
+        && update.inputs.is_none()
+    {
+        return Err(anyhow::anyhow!(format!(
+            "{qid} is changing an existing action, but has no extra keys set"
+        )));
+    }
+    let Some(index) = action_map.get(&qid) else {
+        return Err(anyhow::anyhow!(format!(
+            "{qid} is changing an action that does not exist"
+        )));
+    };
+    if *index == usize::MAX {
+        return Err(anyhow::anyhow!(format!(
+            "{qid} is changing an action that was hidden before"
+        )));
+    }
+
+    let mut ad = actions
+        .get(*index)
+        .expect("must exist, we got an index")
+        .clone();
+    assert_eq!(ad.id, update.name.to_string());
+
+    if let Some(description) = std::mem::take(&mut update.description) {
+        ad.description = description;
+    }
+    if let Some(command) = &update.command {
+        ad.command = map_command(command)?;
+    }
+    if let Some(exit_code) = &update.exit_code {
+        ad.expected_exit_code = *exit_code;
+    }
+    if let Some(inputs) = &update.inputs {
+        let mut inputs = map_input_filters(inputs)?;
+        for (k, v) in inputs.drain() {
+            if v.is_empty() {
+                if ad.input_filters.remove(&k).is_none() {
+                    return Err(anyhow::anyhow!(format!(
+                        "{k} does not exist when trying to remove it from inputs"
+                    )))
+                    .context(format!("While changing {qid}"));
+                }
+            } else {
+                ad.input_filters.insert(k, v);
+            }
+        }
+    }
+
+    let index = actions.len();
+    actions.push(ad);
+    action_map.insert(qid.clone(), index);
+    action_map.insert(sqid.clone(), index);
+
+    Ok(())
+}
+
+fn add_action(
+    update: &mut TomlActionDefinition,
+    source: &ActionSource,
+    actions: &mut Vec<beautytips::ActionDefinition>,
+    action_map: &mut ActionMap,
+) -> anyhow::Result<()> {
+    let qid = QualifiedActionId::new(update.name.clone());
+    let sqid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+
+    let Some(command) = &update.command else {
+        return Err(anyhow::anyhow!(format!(
+            "Can not add {}: No command",
+            update.name
+        )));
     };
 
-    let input_filters = ad
-        .inputs
-        .into_iter()
+    if let Some(index) = action_map.get(&qid) {
+        if *index != usize::MAX {
+            return Err(anyhow::anyhow!(format!(
+                "{} already exists, can not add",
+                update.name
+            )));
+        }
+    };
+
+    let description = std::mem::take(&mut update.description).unwrap_or_default();
+    let command = map_command(&command).context("Processing command of {qid}")?;
+    let expected_exit_code = update.exit_code.unwrap_or(0);
+    let input_filters = if let Some(inputs) = &update.inputs {
+        map_input_filters(inputs)?
+    } else {
+        beautytips::InputFilters::default()
+    };
+
+    let ad = beautytips::ActionDefinition {
+        id: update.name.to_string(),
+        source: source.to_string(),
+        description,
+        command,
+        expected_exit_code,
+        input_filters,
+    };
+
+    let index = actions.len();
+    actions.push(ad);
+    action_map.insert(qid, index);
+    action_map.insert(sqid, index);
+
+    Ok(())
+}
+
+fn merge_actions(
+    mut actions: Vec<beautytips::ActionDefinition>,
+    mut action_map: ActionMap,
+    other: &mut ConfigurationSource,
+) -> anyhow::Result<(Vec<beautytips::ActionDefinition>, ActionMap)> {
+    for mut action in other.actions.drain(..) {
+        match action.merge {
+            MergeAction::Hide => hide_action(&action, &mut action_map)?,
+            MergeAction::Change => {
+                change_action(&mut action, &other.source, &mut actions, &mut action_map)?;
+            }
+            MergeAction::Add => {
+                add_action(&mut action, &other.source, &mut actions, &mut action_map)?;
+            }
+        }
+    }
+    Ok((actions, action_map))
+}
+
+fn add_new_action_groups(
+    mut action_groups: ActionGroups,
+    other: &ConfigurationSource,
+) -> ActionGroups {
+    for ag in &other.action_groups {
+        let qid = QualifiedActionId::new(ag.name.clone());
+        let sqid = QualifiedActionId::new_from_source(ag.name.clone(), other.source.clone());
+        let ids = ag
+            .actions
+            .iter()
+            .map(|id| {
+                if id.source == Some(ActionSource::new_str("this").unwrap()) {
+                    QualifiedActionId::new_from_source(id.id.clone(), other.source.clone())
+                } else {
+                    id.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+
+        action_groups.insert(qid, ids.clone());
+        action_groups.insert(sqid, ids);
+    }
+
+    action_groups
+}
+
+fn map_command(toml_command: &str) -> anyhow::Result<Vec<String>> {
+    let mut command = shell_words::split(toml_command.trim())
+        .context(format!("Failed to parse command '{toml_command}'"))?;
+
+    if let Some(executable) = command.first() {
+        if executable == "{BEAUTY_TIPS}" {
+            command[0] = std::env::current_exe()
+                .context("Failed to get beauty_tips binary location")?
+                .to_string_lossy()
+                .to_string();
+        }
+    }
+
+    Ok(command)
+}
+
+fn map_input_filters(
+    toml_filters: &HashMap<String, Vec<String>>,
+) -> anyhow::Result<beautytips::InputFilters> {
+    toml_filters
+        .iter()
         .try_fold(HashMap::new(), |mut acc, (k, v)| {
             let entry = acc.entry(k.clone());
             if matches!(entry, std::collections::hash_map::Entry::Occupied(_)) {
@@ -495,36 +559,7 @@ fn map_toml_action(
             entry.or_insert(globs);
             Ok(acc)
         })
-        .context("Parsing input filters for action '{id}'")?;
-
-    Ok(beautytips::ActionDefinition {
-        id: id.clone(),
-        source: source_name.to_string(),
-        description: ad.description.clone(),
-        command,
-        expected_exit_code: ad.exit_code,
-        input_filters,
-    })
-}
-
-fn populate_action_map(actions: &[beautytips::ActionDefinition]) -> ActionMap {
-    let mut map: ActionMap = actions
-        .iter()
-        .enumerate()
-        .filter_map(|(index, d)| {
-            (d.command.len() != 1
-                || d.command.first().map(std::string::String::as_str) != Some("/dev/null"))
-            .then_some((QualifiedActionId::from_def(d), index))
-        })
-        .collect();
-    map.extend(
-        actions
-            .iter()
-            .enumerate()
-            .map(|(index, d)| (QualifiedActionId::from_def_with_source(d), index)),
-    );
-
-    map
+        .context("Parsing input filters for action '{id}'")
 }
 
 fn group_action_id(id: &QualifiedActionId) -> Option<QualifiedActionId> {
@@ -538,64 +573,95 @@ fn group_action_id(id: &QualifiedActionId) -> Option<QualifiedActionId> {
     })
 }
 
-fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &ActionMap) {
-    for (k, v) in action_map
-        .iter()
-        .filter_map(|(k, v)| group_action_id(k).map(|id| (id, *v)))
-    {
-        action_groups.entry(k).or_default().push(v);
+fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyhow::Result<()> {
+    for (k, v) in action_groups {
+        for i in v {
+            if action_map.get(i).is_none() && action_groups.get(i).is_none() {
+                return Err(anyhow::anyhow!(
+                    "Action Group {k} has unknown dependency {i}"
+                ));
+            }
+        }
     }
+
+    Ok(())
+}
+
+fn add_auto_groups(action_groups: &mut ActionGroups, action_map: &ActionMap) {
+    // for (k, v) in action_map
+    //     .iter()
+    //     .filter_map(|(k, v)| group_action_id(k).map(|id| (id, *v)))
+    // {
+    //     action_groups.entry(k).or_default().push(v);
+    // }
 }
 
 impl Configuration {
     /// Merge `other` onto the base of `self`
-    pub fn merge(self, other: Self) -> anyhow::Result<Self> {
-        assert!(self.unknown_actions.is_empty());
+    pub fn merge(mut self, mut other: ConfigurationSource) -> anyhow::Result<Self> {
+        let (actions, action_map) = merge_actions(
+            std::mem::take(&mut self.actions),
+            std::mem::take(&mut self.action_map),
+            &mut other,
+        )?;
 
-        let mut actions: Vec<beautytips::ActionDefinition> = merge_actions(&self, &other)?;
-
-        actions.sort();
-        let action_map: ActionMap = populate_action_map(&actions);
         let action_groups = {
-            let mut ags = merge_action_groups(&self, &other, &action_map)?;
+            let mut ags = add_new_action_groups(std::mem::take(&mut self.action_groups), &other);
 
             add_auto_groups(&mut ags, &action_map);
 
             ags
         };
 
-        drop(other); // consume other!
+        validate_state(&action_groups, &action_map)?;
 
         Ok(Self {
             action_groups,
-            unknown_actions: Vec::new(),
             actions,
             action_map,
         })
     }
 
-    pub fn action<'a>(
-        &'a self,
-        name: &QualifiedActionId,
-    ) -> Option<&'a beautytips::ActionDefinition> {
-        self.action_map
-            .get(name)
-            .and_then(|index| self.actions.get(*index))
+    fn add_actions(
+        &self,
+        action_name: &QualifiedActionId,
+        result: &mut HashSet<usize>,
+        visited: &mut HashSet<QualifiedActionId>,
+    ) -> anyhow::Result<()> {
+        if !visited.insert(action_name.clone()) {
+            return Ok(());
+        }
+
+        if let Some(index) = self.action_map.get(action_name) {
+            result.insert(*index);
+        } else if let Some(group_ids) = self.action_groups.get(action_name) {
+            for g in group_ids {
+                self.add_actions(g, result, visited)?;
+            }
+        } else if action_name.id.to_string().ends_with("_all") {
+            let prefix = &action_name.id.to_string()[..action_name.id.to_string().len() - 4];
+            for c in self.actions.iter().filter_map(|ad| {
+                let qid = QualifiedActionId::from_def(ad);
+                qid.to_string().starts_with(prefix).then_some(qid)
+            }) {
+                self.add_actions(&c, result, visited)?;
+            }
+        } else {
+            return Err(anyhow::anyhow!(format!("Unknown action {action_name}")));
+        }
+
+        Ok(())
     }
 
-    pub fn named_actions<'a>(
+    pub fn actions<'a>(
         &'a self,
         action_names: &[QualifiedActionId],
     ) -> anyhow::Result<beautytips::ActionDefinitionIterator<'a>> {
         let mut indices = HashSet::new();
+        let mut visited = HashSet::new();
+
         for action_name in action_names {
-            if let Some(index) = self.action_map.get(action_name) {
-                indices.insert(*index);
-            } else if let Some(group_indices) = self.action_groups.get(action_name) {
-                indices.extend(group_indices.iter());
-            } else {
-                return Err(anyhow::anyhow!(format!("Unknown action {action_name}")));
-            }
+            self.add_actions(action_name, &mut indices, &mut visited)?;
         }
 
         Ok(beautytips::ActionDefinitionIterator::new(
@@ -603,95 +669,11 @@ impl Configuration {
             indices,
         ))
     }
-
-    fn from_string(value: &str, source_name: &ActionSource) -> anyhow::Result<Configuration> {
-        let toml_config: TomlConfiguration =
-            toml::from_str(value).context("Failed to parse toml")?;
-
-        let mut actions: Vec<_> = toml_config
-            .actions
-            .into_iter()
-            .map(|ad| map_toml_action(ad, source_name))
-            .collect::<anyhow::Result<_>>()?;
-
-        actions.sort();
-
-        {
-            let mut current = None;
-
-            for d in &actions {
-                if Some(&d.id) == current {
-                    return Err(anyhow::anyhow!(format!(
-                        "Duplicate action \'{}\' found",
-                        d.id
-                    )));
-                }
-                current = Some(&d.id);
-            }
-        }
-        let action_map = populate_action_map(&actions);
-        let mut unknown_actions = Vec::new();
-
-        let action_groups = toml_config
-            .action_groups
-            .into_iter()
-            .map(|ag| (ag.name, ag.actions))
-            .try_fold(HashMap::new(), |mut acc, (v_id, v_val)| {
-                let mut v = v_val.iter().collect::<Vec<_>>();
-                v.sort();
-                v.dedup();
-
-                if v.len() != v_val.len() {
-                    return Err(anyhow::anyhow!(
-                        "Action group '{v_id}' has duplicate actions"
-                    ));
-                }
-
-                let v: Vec<usize> = v
-                    .iter()
-                    .map(|id| map_id_to_index(id, &action_map, &mut unknown_actions))
-                    .collect();
-
-                let qai = QualifiedActionId::new(v_id.clone());
-                let old = acc.insert(qai.clone(), v.clone());
-                if old.is_some() {
-                    return Err(anyhow::anyhow!(format!(
-                        "Action group '{}' defined twice in one config location",
-                        qai.to_string()
-                    )));
-                }
-                let qai = QualifiedActionId::new_from_source(v_id, source_name.clone());
-                let old = acc.insert(qai.clone(), v.clone());
-                if old.is_some() {
-                    return Err(anyhow::anyhow!(format!(
-                        "Action group '{}' defined twice in one config location",
-                        qai.to_string()
-                    )));
-                }
-
-                Ok(acc)
-            })?;
-
-        Ok(Configuration {
-            action_groups,
-            actions,
-            unknown_actions,
-            action_map,
-        })
-    }
-
-    fn from_path(path: &Path, source_name: &ActionSource) -> anyhow::Result<Self> {
-        let config_data =
-            std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
-
-        Configuration::from_string(config_data.as_str(), source_name)
-            .context("Failed to parse toml file {value:?}")
-    }
 }
 
 pub fn builtin() -> Configuration {
     let toml = include_str!("rules.toml");
-    let config = Configuration::from_string(toml, &ActionSource::new_str("builtin").unwrap())
+    let config = ConfigurationSource::from_string(toml, ActionSource::new_str("builtin").unwrap())
         .expect("builtins should parse fine");
 
     let base = Configuration::default();
@@ -706,9 +688,9 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         .ok_or(anyhow::anyhow!("Config directory not found"))?;
     let config_file = config_dir.join("config.toml");
 
-    let user = Configuration::from_path(
+    let user = ConfigurationSource::from_path(
         config_file.as_path(),
-        &ActionSource::new_str("user").unwrap(),
+        ActionSource::new_str("user").unwrap(),
     )
     .context("Failed to parse configuration file {config_file:?}")?;
     base.merge(user)
@@ -733,23 +715,44 @@ inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[action_groups]]
 name = "test"
-actions = [ "test1", "test2" ]
+actions = [ "test_1", "test_2" ]
 "#;
 
         let base =
-            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = Configuration::default().merge(base).unwrap();
 
         assert_eq!(base.actions.len(), 2);
+        assert_eq!(
+            base.actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            base.actions(&[QualifiedActionId::new(ActionId::new_str("test_2").unwrap())])
+                .unwrap()
+                .count(),
+            1
+        );
         assert!(base
-            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
-            .is_some());
-        assert!(base
-            .action(&QualifiedActionId::new(ActionId::new_str("test_2").unwrap()))
-            .is_some());
-        assert!(base
-            .action(&QualifiedActionId::new(ActionId::new_str("test_3").unwrap()))
-            .is_none());
+            .actions(&[QualifiedActionId::new(ActionId::new_str("test_3").unwrap())])
+            .is_err());
         assert_eq!(base.action_groups.len(), 2);
+        assert_eq!(
+            base.actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
+                .unwrap()
+                .count(),
+            2
+        );
+        assert_eq!(
+            base.actions(&[QualifiedActionId::new(
+                ActionId::new_str("test_all").unwrap()
+            )])
+            .unwrap()
+            .count(),
+            2
+        );
     }
 
     #[test]
@@ -757,7 +760,8 @@ actions = [ "test1", "test2" ]
         let base = "";
 
         let base =
-            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = Configuration::default().merge(base).unwrap();
 
         assert_eq!(base.actions.len(), 0);
         assert_eq!(base.action_groups.len(), 0);
@@ -770,7 +774,9 @@ name = "test_1"
 command = "foobar x y z"
 "#;
 
-        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
+        assert!(
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+        );
     }
 
     #[test]
@@ -791,7 +797,9 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
+        assert!(
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+        );
     }
 
     #[test]
@@ -812,7 +820,9 @@ id = "foobar"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
+        assert!(
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+        );
     }
 
     #[test]
@@ -832,7 +842,9 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
+        assert!(
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+        );
     }
 
     #[test]
@@ -852,7 +864,9 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        assert!(Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).is_err());
+        let base =
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        assert!(Configuration::default().merge(base).is_err());
     }
 
     #[test]
@@ -880,30 +894,38 @@ actions = [ "test_1", "test_2" ]
 "#;
 
         let base =
-            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
-
-        let other: Configuration = Configuration::default();
-
-        let merge = base.merge(other).unwrap();
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let merge = Configuration::default().merge(base).unwrap();
 
         assert_eq!(merge.actions.len(), 3);
-        assert!(merge
-            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
-            .is_some());
-        assert!(merge
-            .action(&QualifiedActionId::new(
-                ActionId::new_str("test_3b").unwrap()
-            ))
-            .is_some());
-        assert!(merge
-            .action(&QualifiedActionId::new(ActionId::new_str("test_2").unwrap()))
-            .is_some());
-        eprintln!("merge action groups: {:?}", merge.action_groups.keys());
-        assert_eq!(merge.action_groups.len(), 4);
-        let it = merge
-            .named_actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
-            .unwrap();
-        assert_eq!(it.count(), 2);
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::new_str("test_3b").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(ActionId::new_str("test_2").unwrap())])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(merge.action_groups.len(), 2);
+        // let it = merge
+        //     .named_actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
+        //     .unwrap();
+        // assert_eq!(it.count(), 2);
     }
 
     #[test]
@@ -931,7 +953,8 @@ actions = [ "test_1", "test_2" ]
 "#;
 
         let base =
-            Configuration::from_string(base, &ActionSource::new_str("test").unwrap()).unwrap();
+            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = Configuration::default().merge(base).unwrap();
 
         let other = r#"[[actions]]
 name = "test_3o"
@@ -940,12 +963,12 @@ command = "barfoo x y z"
 
 [[actions]]
 name = "test_2"
-description = "foo"
+merge = "change"
 command = "/dev/null"
 
 [[actions]]
 name = "test_1"
-description = "foo"
+merge = "change"
 command = "barfoo x y z"
 
 [[action_groups]]
@@ -957,28 +980,46 @@ name = "test_group"
 actions = [ "test_3b" ]
 "#;
         let other =
-            Configuration::from_string(other, &ActionSource::new_str("test2").unwrap()).unwrap();
+            ConfigurationSource::from_string(other, ActionSource::new_str("test2").unwrap())
+                .unwrap();
 
         let merge = base.merge(other).unwrap();
 
-        assert_eq!(merge.actions.len(), 5);
-        assert!(merge
-            .action(&QualifiedActionId::new(ActionId::new_str("test_1").unwrap()))
-            .is_some());
-        assert!(merge
-            .action(&QualifiedActionId::new(
-                ActionId::new_str("test_3b").unwrap()
-            ))
-            .is_some());
-        assert!(merge
-            .action(&QualifiedActionId::new(ActionId::new_str("test_3o").unwrap()))
-            .is_some());
-        assert_eq!(merge.action_groups.len(), 8);
-        let mut it = merge
-            .named_actions(&[QualifiedActionId::new(ActionId::new_str("test_group").unwrap())])
-            .unwrap();
-        assert_eq!(it.next().unwrap().id.as_str(), "test_3b");
-        assert!(it.next().is_none());
+        assert_eq!(merge.actions.len(), 6);
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::new_str("test_3b").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::new_str("test_3o").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::new_str("test_group").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -986,6 +1027,6 @@ actions = [ "test_3b" ]
         let builtin = builtin();
 
         assert!(!builtin.actions.is_empty());
-        assert!(!builtin.action_groups.is_empty());
+        assert!(builtin.action_groups.is_empty());
     }
 }

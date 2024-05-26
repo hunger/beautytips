@@ -4,7 +4,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
 mod args;
-mod inputs;
+pub(crate) mod inputs;
 
 #[derive(Clone, Debug, Eq)]
 pub struct ActionDefinition {

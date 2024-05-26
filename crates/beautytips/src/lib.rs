@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-mod actions;
+pub(crate) mod actions;
 mod errors;
 pub(crate) mod util;
 pub(crate) mod vcs;
@@ -9,7 +9,7 @@ pub(crate) mod vcs;
 use std::path::PathBuf;
 
 use actions::ActionUpdateReceiver;
-pub use actions::{ActionDefinition, ActionDefinitionIterator};
+pub use actions::{inputs::InputFilters, ActionDefinition, ActionDefinitionIterator};
 pub use errors::{Error, Result};
 
 #[derive(Clone, Debug, Default)]
