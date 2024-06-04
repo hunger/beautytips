@@ -25,15 +25,3 @@ description = "Unify files to consistently use one line ending"
 # --fix=(cr|crlf|lf|auto): Fix towards one of the options or pick the
 #         one used most widely in a file
 command = "{BEAUTY_TIPS} builtin bom -- --fix=auto -- {{files...}}"
-
-[[actions]]
-name = "check_cargo_fmt"
-description = "Run cargo fmt in check mode"
-command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
-
-[[actions]]
-name = "fix_cargo_fmt"
-description = "Run cargo fmt in fix mode"
-command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]

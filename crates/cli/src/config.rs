@@ -179,7 +179,7 @@ impl QualifiedActionId {
         }
     }
 
-    /// Create a new `ActionId`
+    /// Create a new `QualifiedActionId`
     ///
     /// # Errors
     ///
@@ -642,13 +642,26 @@ impl Configuration {
     }
 }
 
-pub fn builtin() -> Configuration {
-    let toml = include_str!("rules.toml");
-    let config = ConfigurationSource::from_string(toml, ActionSource::new_str("builtin").unwrap())
-        .expect("builtins should parse fine");
+macro_rules! import_rules {
+    ( $( $file: tt ),* ) => {{
+        {
+            let config = Configuration::default();
+            $(
+                let config = config.merge(
+                    ConfigurationSource::from_string(
+                        include_str!(std::concat!($file, ".rules")),
+                        ActionSource::new_str($file).expect(std::concat!($file, " is a valid action id"))
+                    ).expect(std::concat!($file, " should parse fine"))
+                )
+                .expect(std::concat!($file, " merge ok"));
+            )*
+            config
+        }
+    }};
+}
 
-    let base = Configuration::default();
-    base.merge(config).expect("builtins should merge just fine")
+pub fn builtin() -> Configuration {
+    import_rules!("builtin", "rust")
 }
 
 pub fn load_user_configuration() -> anyhow::Result<Configuration> {

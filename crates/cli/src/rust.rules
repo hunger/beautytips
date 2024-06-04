@@ -1,0 +1,35 @@
+[[actions]]
+name = "check_fmt"
+description = "Run cargo fmt in check mode"
+command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "fix_fmt"
+description = "Run cargo fmt in fix mode"
+command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "check_clippy"
+description = "Run cargo clippy"
+command = "cargo clippy -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "fix_clippy"
+description = "Run cargo clippy in fix mode"
+command = "cargo clippy --fix -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "check_syntax"
+description = "Run cargo check"
+command = "cargo check -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "check_tests"
+description = "Run cargo test"
+command = "cargo test -p {{cargo_targets}} -- --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
