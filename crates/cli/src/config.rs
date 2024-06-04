@@ -251,7 +251,6 @@ pub struct TomlActionDefinition {
 
 type ActionGroups = HashMap<QualifiedActionId, Vec<QualifiedActionId>>;
 type ActionMap = HashMap<QualifiedActionId, usize>;
-type UnknownActionsVec = Vec<QualifiedActionId>;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]

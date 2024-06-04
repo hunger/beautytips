@@ -241,10 +241,9 @@ impl IsBinary {
 }
 
 const LINE_ENDING_NAMES: [&str; 4] = ["cr", "crlf", "lf", "auto"];
-const LF: &str = "\n";
-const CR: &str = "\r";
-const CRLF: &str = "\r\n";
-const LINE_ENDINGS: [&str; 4] = [CR, CRLF, LF, ""];
+const LINE_ENDING_STRINGS: [&str; 4] = ["\r", "\r\n", "\n", "auto"];
+const LF: u8 = b'\n';
+const CR: u8 = b'\r';
 
 #[derive(Clone, Debug, Default)]
 struct IsMixedLineEnding {
@@ -302,6 +301,33 @@ fn detect_mixed_line_endings(contents: &[u8]) -> (bool, bool, usize) {
     }
 }
 
+fn fix_mixed_line_endings(contents: &[u8], fix_index: usize) -> Vec<u8> {
+    assert!(fix_index < 3);
+
+    let mut changed = Vec::with_capacity(contents.len());
+    let mut last_was_cr = false;
+    for b in contents {
+        match *b {
+            CR => {
+                last_was_cr = true;
+            }
+            LF => {
+                last_was_cr = false;
+                changed.extend_from_slice(LINE_ENDING_STRINGS[fix_index].as_bytes());
+            }
+            b => {
+                if last_was_cr {
+                    changed.extend_from_slice(LINE_ENDING_STRINGS[fix_index].as_bytes());
+                    last_was_cr = false;
+                }
+                changed.push(b)
+            }
+        }
+    }
+
+    changed
+}
+
 fn handle_mixed_line_endings(
     args: &[(String, String)],
     inputs: &[PathBuf],
@@ -335,8 +361,9 @@ fn handle_mixed_line_endings(
         let mut contents = vec![];
         buf.read_to_end(&mut contents)
             .context("Failed to read data from file")?;
+        drop(buf);
 
-        let (is_binary, is_mixed, mayority_index) = detect_mixed_line_endings(&contents);
+        let (is_binary, is_mixed, majority_index) = detect_mixed_line_endings(&contents);
 
         if is_binary {
             if verbosity > 0 {
@@ -347,22 +374,37 @@ fn handle_mixed_line_endings(
 
         if !is_mixed {
             if verbosity > 0 {
-                eprintln!("{p:?}: {} only, OK", LINE_ENDING_NAMES[mayority_index]);
+                eprintln!("{p:?}: {} only, OK", LINE_ENDING_NAMES[majority_index]);
             }
             continue;
         }
 
         if fix {
             let fix_index = if expected_index == 3 {
-                mayority_index
+                majority_index
             } else {
                 expected_index
             };
+
+            let new_contents = fix_mixed_line_endings(&contents, fix_index);
+
+            let file = std::fs::OpenOptions::new()
+                .read(false)
+                .write(true)
+                .create(false)
+                .append(false)
+                .truncate(true)
+                .open(p)
+                .context("Failed to write file {p:?}")?;
+            let mut buf = std::io::BufWriter::new(file);
+            buf.write_all(&new_contents).context("Failed to write data")?;
+            eprintln!("{p:?}: FIXED to {}", LINE_ENDING_NAMES[fix_index]);
+            continue;
         } else {
             mixed_line_endings += 1;
             eprintln!(
-                "{p:?}: mixed with {} being the mayority FAIL",
-                LINE_ENDING_NAMES[mayority_index]
+                "{p:?}: mixed with {} being the majority FAIL",
+                LINE_ENDING_NAMES[majority_index]
             );
         }
     }
@@ -427,5 +469,23 @@ mod tests {
     fn test_detect_line_endings_all_of_them() {
         let input = "a\rb\r\nc\n".as_bytes();
         assert_eq!(detect_mixed_line_endings(input), (false, true, 2));
+    }
+
+    #[test]
+    fn test_fix_line_endings_cr() {
+        let input = "a\rb\r\nc\n".as_bytes();
+        assert_eq!(&fix_mixed_line_endings(input, 0), b"a\rb\rc\r");
+    }
+
+    #[test]
+    fn test_fix_line_endings_crlf() {
+        let input = "a\rb\r\nc\n".as_bytes();
+        assert_eq!(&fix_mixed_line_endings(input, 1), b"a\r\nb\r\nc\r\n");
+    }
+
+    #[test]
+    fn test_fix_line_endings_lf() {
+        let input = "a\rb\r\nc\n".as_bytes();
+        assert_eq!(&fix_mixed_line_endings(input, 2), b"a\nb\nc\n");
     }
 }
