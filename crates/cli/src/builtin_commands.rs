@@ -397,7 +397,8 @@ fn handle_mixed_line_endings(
                 .open(p)
                 .context("Failed to write file {p:?}")?;
             let mut buf = std::io::BufWriter::new(file);
-            buf.write_all(&new_contents).context("Failed to write data")?;
+            buf.write_all(&new_contents)
+                .context("Failed to write data")?;
             eprintln!("{p:?}: FIXED to {}", LINE_ENDING_NAMES[fix_index]);
             continue;
         } else {

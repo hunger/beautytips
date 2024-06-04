@@ -188,6 +188,10 @@ impl QualifiedActionId {
     pub fn parse_str(input: &str) -> crate::Result<Self> {
         Self::parse(input.to_string())
     }
+
+    pub fn unqualified_id(&self) -> &ActionId {
+        &self.id
+    }
 }
 
 impl Display for QualifiedActionId {
@@ -608,12 +612,18 @@ impl Configuration {
             for g in group_ids {
                 self.add_actions(g, result, visited)?;
             }
-        } else if action_name.id.to_string().ends_with("_all") {
-            let prefix = &action_name.id.to_string()[..action_name.id.to_string().len() - 4];
+        } else if let Some(prefix) = action_name.id.to_string().strip_suffix("_all") {
+            let prefix = format!("{prefix}_");
+            eprintln!("Looking for actions starting with \"{prefix}\"");
             for c in self.actions.iter().filter_map(|ad| {
                 let qid = QualifiedActionId::from_def(ad);
-                qid.to_string().starts_with(prefix).then_some(qid)
+                eprintln!("Looking at {}...", qid.to_string());
+                qid.unqualified_id()
+                    .to_string()
+                    .starts_with(&prefix)
+                    .then_some(qid)
             }) {
+                eprintln!("   To run: {c:?}");
                 self.add_actions(&c, result, visited)?;
             }
         } else {

@@ -19,7 +19,7 @@ inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 [[actions]]
 name = "fix_clippy"
 description = "Run cargo clippy in fix mode"
-command = "cargo clippy --fix -p {{cargo_targets}} -- --color=never"
+command = "cargo clippy --fix -p {{cargo_targets}} --allow-no-vcs -- --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
