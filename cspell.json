@@ -1,0 +1,17 @@
+{
+    "version": "0.2",
+    "language": "en",
+    "ignorePaths": [
+        "cspell.json"
+    ],
+    "words": [
+        "beautytips",
+        "clippy",
+        "oneshot",
+        "serde",
+        "termion"
+    ],
+    "flagWords": [
+        "hte"
+    ]
+}

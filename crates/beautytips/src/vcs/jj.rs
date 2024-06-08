@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+// spell-checker:ignore interdiff
+
 use std::{
     ffi::OsStr,
     os::unix::ffi::OsStrExt,
@@ -61,16 +63,6 @@ impl vcs::Vcs for Jj {
             .filter(|l| l.len() > 2 && &l[0..2] != b"D ")
             .map(|l| PathBuf::from(OsStr::from_bytes(&l[2..])))
             .collect())
-    }
-
-    #[tracing::instrument]
-    async fn is_supported(&self, current_directory: &Path) -> bool {
-        tokio::process::Command::new(self.name())
-            .args(["--version"])
-            .current_dir(current_directory)
-            .status()
-            .await
-            .is_ok()
     }
 
     #[tracing::instrument]

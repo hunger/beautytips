@@ -32,16 +32,6 @@ impl vcs::Vcs for Git {
     }
 
     #[tracing::instrument]
-    async fn is_supported(&self, current_directory: &Path) -> bool {
-        tokio::process::Command::new("git")
-            .args(["--version"])
-            .current_dir(current_directory)
-            .status()
-            .await
-            .is_ok()
-    }
-
-    #[tracing::instrument]
     async fn repository_root(&self, current_directory: &Path) -> Option<PathBuf> {
         let output = tokio::process::Command::new("git")
             .args(["rev-parse", "--show-toplevel"])

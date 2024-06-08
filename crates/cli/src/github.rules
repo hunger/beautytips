@@ -1,0 +1,5 @@
+[[actions]]
+name = "check_actions"
+description = "Run actionlint on github actions"
+command = "actionlint"
+inputs.files = [ ".github/**/*.yaml", ".github/**/*.yml" ]

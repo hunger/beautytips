@@ -1,0 +1,4 @@
+[[actions]]
+name = "check_code_spell"
+description = "Run cspell"
+command = "cspell lint --no-progress --no-color {{files...}}"

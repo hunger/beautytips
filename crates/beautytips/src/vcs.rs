@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+// spell-checker:ignore vcses
+
 use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -16,14 +18,11 @@ pub type DynVcs = &'static (dyn Vcs + Sync + Send);
 
 static KNOWN_VCSES: OnceLock<Vec<BoxedVcs>> = OnceLock::new();
 
-/// Trait used to supposrt different version control systems
+/// Trait used to support different version control systems
 #[async_trait::async_trait]
 pub trait Vcs {
     /// The name of the version control system
     fn name(&self) -> &str;
-
-    /// Is this VCS supported on this platform?
-    async fn is_supported(&self, current_directory: &Path) -> bool;
 
     /// Find changed files in the `root_directory`
     ///
@@ -104,7 +103,7 @@ async fn vcs_for_configuration(
     }
 }
 
-/// Find all the files that changed based on the `VcsInput` configurattion
+/// Find all the files that changed based on the `VcsInput` configuration
 ///
 /// # Errors
 ///

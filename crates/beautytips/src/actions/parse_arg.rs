@@ -47,7 +47,7 @@ pub(crate) fn parse_arg(arg: &str,
                         current = String::new();
                         ParseArgs::Outside
                     }
-                    ParseArgs::Ouside => {
+                    ParseArgs::Outside => {
                         current += "}";
                     }
                 }

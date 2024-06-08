@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+// spell-checker:ignore boms
+
 use std::{
     ffi::OsString,
     io::{Read, Write},
@@ -320,7 +322,7 @@ fn fix_mixed_line_endings(contents: &[u8], fix_index: usize) -> Vec<u8> {
                     changed.extend_from_slice(LINE_ENDING_STRINGS[fix_index].as_bytes());
                     last_was_cr = false;
                 }
-                changed.push(b)
+                changed.push(b);
             }
         }
     }
@@ -401,13 +403,13 @@ fn handle_mixed_line_endings(
                 .context("Failed to write data")?;
             eprintln!("{p:?}: FIXED to {}", LINE_ENDING_NAMES[fix_index]);
             continue;
-        } else {
-            mixed_line_endings += 1;
-            eprintln!(
-                "{p:?}: mixed with {} being the majority FAIL",
-                LINE_ENDING_NAMES[majority_index]
-            );
         }
+
+        mixed_line_endings += 1;
+        eprintln!(
+            "{p:?}: mixed with {} being the majority FAIL",
+            LINE_ENDING_NAMES[majority_index]
+        );
     }
 
     Ok(mixed_line_endings)

@@ -6,10 +6,11 @@ use std::io::Write;
 #[derive(Default)]
 pub struct Reporter {
     running: Vec<String>,
+    has_status: bool,
 }
 
 impl Reporter {
-    fn print_status(&self) {
+    fn print_status(&mut self) {
         self.clear_status();
 
         let (width, _) = termion::terminal_size().unwrap_or((80, 40));
@@ -22,14 +23,18 @@ impl Reporter {
         }
         print!("{}Running: {running}", termion::cursor::Save);
         std::io::stdout().flush().expect("Flushing failed");
+        self.has_status = true;
     }
 
-    fn clear_status(&self) {
-        print!(
-            "{}{}",
-            termion::cursor::Restore,
-            termion::clear::AfterCursor
-        );
+    fn clear_status(&mut self) {
+        if self.has_status {
+            print!(
+                "{}{}",
+                termion::cursor::Restore,
+                termion::clear::AfterCursor
+            );
+        }
+        self.has_status = false;
     }
 }
 
@@ -73,7 +78,6 @@ fn stdout_and_err_to_str(stdout: &[u8], stderr: &[u8]) -> String {
 impl beautytips::Reporter for Reporter {
     fn report_start(&mut self, action_id: String) {
         self.running.push(action_id);
-
         self.print_status();
     }
 

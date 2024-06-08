@@ -3,10 +3,8 @@
 
 use std::{fmt, path::PathBuf};
 
-/// `Result` from std, with the error type defaulting to xshell's [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// An error returned by an `xshell` operation.
 pub struct Error {
     kind: Box<ErrorKind>,
 }

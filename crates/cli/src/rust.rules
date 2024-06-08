@@ -13,23 +13,29 @@ inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 [[actions]]
 name = "check_clippy"
 description = "Run cargo clippy"
-command = "cargo clippy -p {{cargo_targets}} -- --color=never"
+command = "cargo clippy -p {{cargo_targets}} --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
 name = "fix_clippy"
 description = "Run cargo clippy in fix mode"
-command = "cargo clippy --fix -p {{cargo_targets}} --allow-no-vcs -- --color=never"
+command = "cargo clippy --fix -p {{cargo_targets}} --allow-no-vcs --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
 name = "check_syntax"
 description = "Run cargo check"
-command = "cargo check -p {{cargo_targets}} -- --color=never"
+command = "cargo check -p {{cargo_targets}} --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
 name = "check_tests"
 description = "Run cargo test"
-command = "cargo test -p {{cargo_targets}} -- --color=never"
+command = "cargo test -p {{cargo_targets}} --color=never"
+inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+
+[[actions]]
+name = "check_outdated_dependencies"
+description = "Run cargo test"
+command = "cargo update -p {{cargo_targets}} --dry-run --color=never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]

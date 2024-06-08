@@ -16,9 +16,9 @@ pub use errors::{Error, Result};
 pub struct VcsInput {
     /// The version control tool to use (or None for auto-detect)
     pub tool: Option<String>,
-    /// The revision to start the comparision from (or None for default)
+    /// The revision to start the comparison from (or None for default)
     pub from_revision: Option<String>,
-    /// The revision to stop the comparision at (or None for default)
+    /// The revision to stop the comparison at (or None for default)
     pub to_revision: Option<String>,
 }
 
@@ -137,7 +137,7 @@ async fn handle_reports(mut reporter: Box<dyn Reporter>, mut rx: ActionUpdateRec
 ///
 /// # Errors
 ///
-/// Mostle `InvalidConfiguration`, but others are possible when data collection fails.
+/// Mostly `InvalidConfiguration`, but others are possible when data collection fails.
 ///
 /// # Panics
 ///
@@ -163,7 +163,7 @@ pub fn collect_input_files<'a>(
 ///
 /// # Errors
 ///
-/// Mostle `InvalidConfiguration`, but others are possible when data collection fails.
+/// Mostly `InvalidConfiguration`, but others are possible when data collection fails.
 ///
 /// # Panics
 ///

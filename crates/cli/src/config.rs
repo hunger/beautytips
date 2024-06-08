@@ -143,14 +143,6 @@ pub struct QualifiedActionId {
 }
 
 impl QualifiedActionId {
-    pub fn from_def(action_definition: &beautytips::ActionDefinition) -> Self {
-        Self::new_from_source(
-            ActionId::new_str(&action_definition.id).expect("This is a valid action id"),
-            ActionSource::new_str(&action_definition.source)
-                .expect("This is a valid action source"),
-        )
-    }
-
     pub fn new_from_source(id: ActionId, source: ActionSource) -> Self {
         Self {
             id,
@@ -187,10 +179,6 @@ impl QualifiedActionId {
     /// but lowercase ASCII letters or '_'.
     pub fn parse_str(input: &str) -> crate::Result<Self> {
         Self::parse(input.to_string())
-    }
-
-    pub fn unqualified_id(&self) -> &ActionId {
-        &self.id
     }
 }
 
@@ -345,12 +333,12 @@ fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> any
         || action.inputs.is_some()
     {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is hidding an existing action, but has extra keys set"
+            "{qid} is hiding an existing action, but has extra keys set"
         )));
     }
     if action_map.insert(qid.clone(), usize::MAX).is_none() {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is hidding an action that does not exist"
+            "{qid} is hiding an action that does not exist"
         )));
     }
 
@@ -364,7 +352,7 @@ fn change_action(
     action_map: &mut ActionMap,
 ) -> anyhow::Result<()> {
     let qid = QualifiedActionId::new(update.name.clone());
-    let sqid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+    let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
 
     if update.description.is_none()
         && update.command.is_none()
@@ -420,7 +408,7 @@ fn change_action(
     let index = actions.len();
     actions.push(ad);
     action_map.insert(qid.clone(), index);
-    action_map.insert(sqid.clone(), index);
+    action_map.insert(s_qid.clone(), index);
 
     Ok(())
 }
@@ -432,7 +420,7 @@ fn add_action(
     action_map: &mut ActionMap,
 ) -> anyhow::Result<()> {
     let qid = QualifiedActionId::new(update.name.clone());
-    let sqid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+    let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
 
     let Some(command) = &update.command else {
         return Err(anyhow::anyhow!(format!(
@@ -471,7 +459,7 @@ fn add_action(
     let index = actions.len();
     actions.push(ad);
     action_map.insert(qid, index);
-    action_map.insert(sqid, index);
+    action_map.insert(s_qid, index);
 
     Ok(())
 }
@@ -501,7 +489,7 @@ fn add_new_action_groups(
 ) -> ActionGroups {
     for ag in &other.action_groups {
         let qid = QualifiedActionId::new(ag.name.clone());
-        let sqid = QualifiedActionId::new_from_source(ag.name.clone(), other.source.clone());
+        let s_qid = QualifiedActionId::new_from_source(ag.name.clone(), other.source.clone());
         let ids = ag
             .actions
             .iter()
@@ -515,7 +503,7 @@ fn add_new_action_groups(
             .collect::<Vec<_>>();
 
         action_groups.insert(qid, ids.clone());
-        action_groups.insert(sqid, ids);
+        action_groups.insert(s_qid, ids);
     }
 
     action_groups
@@ -612,19 +600,14 @@ impl Configuration {
             for g in group_ids {
                 self.add_actions(g, result, visited)?;
             }
-        } else if let Some(prefix) = action_name.id.to_string().strip_suffix("_all") {
+        } else if let Some(prefix) = action_name.to_string().strip_suffix("_all") {
             let prefix = format!("{prefix}_");
-            eprintln!("Looking for actions starting with \"{prefix}\"");
-            for c in self.actions.iter().filter_map(|ad| {
-                let qid = QualifiedActionId::from_def(ad);
-                eprintln!("Looking at {}...", qid.to_string());
-                qid.unqualified_id()
-                    .to_string()
-                    .starts_with(&prefix)
-                    .then_some(qid)
-            }) {
-                eprintln!("   To run: {c:?}");
-                self.add_actions(&c, result, visited)?;
+            for c in self
+                .action_map
+                .iter()
+                .filter_map(|(qid, _)| qid.to_string().starts_with(&prefix).then_some(qid))
+            {
+                self.add_actions(c, result, visited)?;
             }
         } else {
             return Err(anyhow::anyhow!(format!("Unknown action {action_name}")));
@@ -670,7 +653,7 @@ macro_rules! import_rules {
 }
 
 pub fn builtin() -> Configuration {
-    import_rules!("builtin", "rust")
+    import_rules!("builtin", "github", "rust", "spell")
 }
 
 pub fn load_user_configuration() -> anyhow::Result<Configuration> {
@@ -879,7 +862,7 @@ inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 name = "test_3b"
 description = "foo"
 command = "do something"
-inputs.files = [ "**/*.slint", "**/*.rs" ]
+inputs.files = [ "**/*.slt", "**/*.rs" ]
 
 [[action_groups]]
 name = "test"
@@ -938,7 +921,7 @@ inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 name = "test_3b"
 description = "foo"
 command = "do something"
-inputs.files = [ "**/*.slint", "**/*.rs" ]
+inputs.files = [ "**/*.slt", "**/*.rs" ]
 
 [[action_groups]]
 name = "test"
@@ -952,7 +935,7 @@ actions = [ "test_1", "test_2" ]
         let other = r#"[[actions]]
 name = "test_3o"
 description = "foo"
-command = "barfoo x y z"
+command = "bar foo x y z"
 
 [[actions]]
 name = "test_2"
@@ -962,7 +945,7 @@ command = "/dev/null"
 [[actions]]
 name = "test_1"
 merge = "change"
-command = "barfoo x y z"
+command = "bar foo x y z"
 
 [[action_groups]]
 name = "test"
