@@ -1,12 +1,12 @@
 [[actions]]
-name = "check_rust_fmt"
+name = "check_fmt"
 description = "Run cargo fmt in check mode"
 command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
 show-output = "never"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "fix_rust_fmt"
+name = "fix_fmt"
 description = "Run cargo fmt in fix mode"
 command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
 show-output = "always"
@@ -27,14 +27,14 @@ show-output = "always"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "check_rust_syntax"
+name = "check_syntax"
 description = "Run cargo check"
 command = "cargo check -p {{cargo_targets}} --color=never"
 show-output = "failure"
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "check_rust_tests"
+name = "check_tests"
 description = "Run cargo test"
 command = "cargo test -p {{cargo_targets}} --color=never"
 show-output = "failure"

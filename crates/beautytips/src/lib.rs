@@ -9,7 +9,9 @@ pub(crate) mod vcs;
 use std::path::PathBuf;
 
 use actions::ActionUpdateReceiver;
-pub use actions::{inputs::InputFilters, ActionDefinition, ActionDefinitionIterator};
+pub use actions::{
+    inputs::InputFilters, ActionDefinition, ActionDefinitionIterator, OutputCondition,
+};
 pub use errors::{Error, Result};
 
 #[derive(Clone, Debug, Default)]

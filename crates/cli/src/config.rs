@@ -225,6 +225,16 @@ pub enum MergeAction {
     Add,
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputCondition {
+    Never,
+    Success,
+    #[default]
+    Failure,
+    Always,
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct TomlActionDefinition {
@@ -239,6 +249,8 @@ pub struct TomlActionDefinition {
     pub run_sequentially: Option<bool>,
     #[serde(default)]
     pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub show_output: Option<OutputCondition>,
     #[serde(default)]
     pub inputs: Option<HashMap<String, Vec<String>>>,
 }
@@ -330,6 +342,7 @@ impl ConfigurationSource {
 fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
     let qid = QualifiedActionId::new(action.name.clone());
     if action.description.is_some()
+        || action.show_output.is_some()
         || action.run_sequentially.is_some()
         || action.command.is_some()
         || action.exit_code.is_some()
@@ -348,6 +361,15 @@ fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> any
     Ok(())
 }
 
+fn match_output_condition(output: &OutputCondition) -> beautytips::OutputCondition {
+    match output {
+        OutputCondition::Never => beautytips::OutputCondition::Never,
+        OutputCondition::Success => beautytips::OutputCondition::Success,
+        OutputCondition::Failure => beautytips::OutputCondition::Failure,
+        OutputCondition::Always => beautytips::OutputCondition::Always,
+    }
+}
+
 fn change_action(
     update: &mut TomlActionDefinition,
     source: &ActionSource,
@@ -358,6 +380,7 @@ fn change_action(
     let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
 
     if update.description.is_none()
+        && update.show_output.is_none()
         && update.run_sequentially.is_none()
         && update.command.is_none()
         && update.exit_code.is_none()
@@ -386,6 +409,9 @@ fn change_action(
 
     if let Some(description) = std::mem::take(&mut update.description) {
         ad.description = description;
+    }
+    if let Some(show_output) = std::mem::take(&mut update.show_output) {
+        ad.show_output = match_output_condition(&show_output);
     }
     if let Some(run_sequential) = std::mem::take(&mut update.run_sequentially) {
         ad.run_sequentially = run_sequential;
@@ -446,6 +472,8 @@ fn add_action(
     };
 
     let description = std::mem::take(&mut update.description).unwrap_or_default();
+    let show_output =
+        match_output_condition(&std::mem::take(&mut update.show_output).unwrap_or_default());
     let command = map_command(command).context("Processing command of {qid}")?;
     let run_sequentially = std::mem::take(&mut update.run_sequentially).unwrap_or(true);
     let expected_exit_code = update.exit_code.unwrap_or(0);
@@ -458,6 +486,7 @@ fn add_action(
     let ad = beautytips::ActionDefinition {
         id: update.name.to_string(),
         source: source.to_string(),
+        show_output,
         run_sequentially,
         description,
         command,
@@ -650,7 +679,7 @@ macro_rules! import_rules {
             $(
                 let config = config.merge(
                     ConfigurationSource::from_string(
-                        include_str!(std::concat!($file, ".rules")),
+                        include_str!(std::concat!($file, ".toml")),
                         ActionSource::new_str($file).expect(std::concat!($file, " is a valid action id"))
                     ).expect(std::concat!($file, " should parse fine"))
                 )
@@ -662,7 +691,7 @@ macro_rules! import_rules {
 }
 
 pub fn builtin() -> Configuration {
-    import_rules!("builtin", "github", "rust", "spell")
+    import_rules!("builtin", "github", "rust", "spell", "toml")
 }
 
 pub fn load_user_configuration() -> anyhow::Result<Configuration> {

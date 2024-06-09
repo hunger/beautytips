@@ -6,6 +6,14 @@ use std::{collections::HashSet, path::PathBuf};
 mod args;
 pub(crate) mod inputs;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OutputCondition {
+    Never,
+    Success,
+    Failure,
+    Always,
+}
+
 #[derive(Clone, Debug, Eq)]
 pub struct ActionDefinition {
     pub id: String,
@@ -13,6 +21,7 @@ pub struct ActionDefinition {
     pub description: String,
     pub run_sequentially: bool,
     pub command: Vec<String>,
+    pub show_output: OutputCondition,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
 }
@@ -218,6 +227,14 @@ async fn run_single_action(
     }
 
     if invalid_exit_code {
+        tracing::trace!("Failure running '{}'", action.id);
+        if action.show_output == OutputCondition::Never
+            || action.show_output == OutputCondition::Success
+        {
+            stdout = Vec::new();
+            stderr = Vec::new();
+        }
+
         report(
             &sender,
             ActionUpdate::Done {
@@ -228,6 +245,13 @@ async fn run_single_action(
         .await;
     } else {
         tracing::trace!("Success running '{}'", action.id);
+        if action.show_output == OutputCondition::Never
+            || action.show_output == OutputCondition::Failure
+        {
+            stdout = Vec::new();
+            stderr = Vec::new();
+        }
+
         report(
             &sender,
             ActionUpdate::Done {
@@ -258,10 +282,7 @@ pub async fn run(
 
     // parallel phase:
     tracing::trace!("Entering parallel run phase");
-    for a in actions
-        .clone()
-        .filter(|ad| !ad.run_sequentially)
-    {
+    for a in actions.clone().filter(|ad| !ad.run_sequentially) {
         let cd = current_directory.clone();
         let tx = sender.clone();
 
