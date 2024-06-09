@@ -11,6 +11,7 @@ pub struct ActionDefinition {
     pub id: String,
     pub source: String,
     pub description: String,
+    pub run_sequentially: bool,
     pub command: Vec<String>,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
@@ -259,7 +260,7 @@ pub async fn run(
     tracing::trace!("Entering parallel run phase");
     for a in actions
         .clone()
-        .filter(|ad| ad.id.as_str().starts_with("check_"))
+        .filter(|ad| !ad.run_sequentially)
     {
         let cd = current_directory.clone();
         let tx = sender.clone();
@@ -278,7 +279,7 @@ pub async fn run(
 
     // sequential phase:
     tracing::trace!("Entering sequential run phase");
-    for a in actions.filter(|ad| !ad.id.as_str().starts_with("check_")) {
+    for a in actions.filter(|ad| ad.run_sequentially) {
         let cd = current_directory.clone();
         let tx = sender.clone();
 

@@ -1,5 +1,6 @@
 [[actions]]
 name = "check_actions"
 description = "Run actionlint on github actions"
+run-sequentially = false
 command = "actionlint"
 inputs.files = [ ".github/**/*.yaml", ".github/**/*.yml" ]

@@ -1,11 +1,13 @@
 [[actions]]
 name = "check_large_file"
 description = "Check for large files in commit"
+run-sequentially = false
 command = "{BEAUTY_TIPS} builtin large-files -- --size=50k -- {{files...}}"
 
 [[actions]]
 name = "check_bom"
 description = "Check files for a byte order mark"
+run-sequentially = false
 command = "{BEAUTY_TIPS} builtin bom -- -- {{files...}}"
 
 [[actions]]
@@ -16,6 +18,7 @@ command = "{BEAUTY_TIPS} builtin bom -- --fix=on -- {{files...}}"
 
 [[actions]]
 name = "check_mixed_line_endings"
+run-sequentially = false
 description = "Check files for mixed line endings"
 command = "{BEAUTY_TIPS} builtin mixed-line-endings -- -- {{files...}}"
 

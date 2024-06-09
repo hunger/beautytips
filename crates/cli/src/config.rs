@@ -236,6 +236,8 @@ pub struct TomlActionDefinition {
     #[serde(default)]
     pub command: Option<String>,
     #[serde(default)]
+    pub run_sequentially: Option<bool>,
+    #[serde(default)]
     pub exit_code: Option<i32>,
     #[serde(default)]
     pub inputs: Option<HashMap<String, Vec<String>>>,
@@ -328,6 +330,7 @@ impl ConfigurationSource {
 fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
     let qid = QualifiedActionId::new(action.name.clone());
     if action.description.is_some()
+        || action.run_sequentially.is_some()
         || action.command.is_some()
         || action.exit_code.is_some()
         || action.inputs.is_some()
@@ -355,6 +358,7 @@ fn change_action(
     let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
 
     if update.description.is_none()
+        && update.run_sequentially.is_none()
         && update.command.is_none()
         && update.exit_code.is_none()
         && update.inputs.is_none()
@@ -382,6 +386,9 @@ fn change_action(
 
     if let Some(description) = std::mem::take(&mut update.description) {
         ad.description = description;
+    }
+    if let Some(run_sequential) = std::mem::take(&mut update.run_sequentially) {
+        ad.run_sequentially = run_sequential;
     }
     if let Some(command) = &update.command {
         ad.command = map_command(command)?;
@@ -440,6 +447,7 @@ fn add_action(
 
     let description = std::mem::take(&mut update.description).unwrap_or_default();
     let command = map_command(command).context("Processing command of {qid}")?;
+    let run_sequentially = std::mem::take(&mut update.run_sequentially).unwrap_or(true);
     let expected_exit_code = update.exit_code.unwrap_or(0);
     let input_filters = if let Some(inputs) = &update.inputs {
         map_input_filters(inputs)?
@@ -450,6 +458,7 @@ fn add_action(
     let ad = beautytips::ActionDefinition {
         id: update.name.to_string(),
         source: source.to_string(),
+        run_sequentially,
         description,
         command,
         expected_exit_code,
