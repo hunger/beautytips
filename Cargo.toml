@@ -1,14 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-[workspace]
-
-default-members = ["crates/beautytips", "crates/cli"]
-
-members = ["crates/beautytips", "crates/cli"]
-resolver = "2"
-
-[workspace.package]
+[package]
 authors = ["Tobias Hunger <tobias.hunger@gmail.com>"]
 edition = "2021"
 homepage = "https://github.com/hunger/beautytips"
@@ -16,8 +9,16 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/hunger/beautytips"
 rust-version = "1.77"
 version = "0.1.0"
+name = "beautytips"
+description = "The beautytips code prettifier"
+readme = "README.md"
+keywords = ["prettifier", "code", "tool"]
+categories = ["command-line-utilities", "development-tools"]
 
-[workspace.lints.clippy]
+[[bin]]
+name = "beautytips"
+
+[lints.clippy]
 cargo = "warn"
 multiple_crate_versions = { level = "allow", priority = 10 }
 complexity = "warn"
@@ -26,8 +27,19 @@ pedantic = "warn"
 style = "warn"
 suspicious = "warn"
 
-[workspace.dependencies]
-beautytips = { version = "=0.1.0", path = "crates/beautytips", default-features = false }
+[dependencies]
+anyhow = { version = "1.0.86" }
+async-trait = { version = "0.1.80" }
+cargo_toml = { version = "0.20.2" }
+clap = { version = "4.5.4", features = ["cargo", "env", "derive"] }
+dirs = { version = "5.0.1" }
+futures = { version = "0.3.30" }
 glob = { version = "0.3.1", default-features = false }
-shell-words = { version = "1.1.0", default-features = true }
+ignore = { version = "0.4.22" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
+shell-words = { version = "1.1.0" }
+termion = { version = "4.0.0" }
+tokio = { version = "1.38.0", features = ["macros", "rt", "rt-multi-thread", "process", "sync", "time", "fs"] }
+toml = { version = "0.8.14", features = ["preserve_order"] }
+tracing = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
