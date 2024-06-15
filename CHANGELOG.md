@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.1.0] - 2024-06-15
+
 Initial Release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/hunger/beautytips/compare/45bd7663096c68181152f84e11a881a6111e5549...HEAD
+[Unreleased]: https://github.com/hunger/beautytips/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/hunger/beautytips/compare/45bd7663096c68181152f84e11a881a6111e5549...v0.1.0
