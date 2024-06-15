@@ -5,9 +5,13 @@
         "cspell.json"
     ],
     "words": [
+        "aarch",
         "beautytips",
         "clippy",
+        "msvc",
         "oneshot",
+        "pijul",
+        "rustfmt",
         "serde",
         "taplo",
         "termion"
