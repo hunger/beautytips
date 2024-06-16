@@ -415,6 +415,22 @@ fn handle_mixed_line_endings(
     Ok(mixed_line_endings)
 }
 
+fn print_environment(args: &[(String, String)], inputs: &[PathBuf], verbosity: u8) {
+    println!("Verbosity: {verbosity}");
+    println!("Arguments:");
+    for (k, v) in args {
+        println!("    {k}={v}");
+    }
+    println!("Inputs");
+    for p in inputs {
+        println!("    {p:?}");
+    }
+    println!("Environment:");
+    for (k, v) in std::env::vars() {
+        println!("    {k}={v}");
+    }
+}
+
 pub fn run_builtin_command(
     action: &str,
     arguments: &[OsString],
@@ -426,6 +442,10 @@ pub fn run_builtin_command(
         "large-files" => check_large_files(&args, &inputs, verbosity),
         "bom" => handle_bom(&args, &inputs, verbosity),
         "mixed-line-endings" => handle_mixed_line_endings(&args, &inputs, verbosity),
+        "print-environment" => {
+            print_environment(&args, &inputs, verbosity);
+            Ok(0)
+        }
         _ => Err(anyhow::anyhow!(format!(
             "{action} is not a builtin command"
         ))),

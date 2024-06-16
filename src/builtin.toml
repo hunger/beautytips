@@ -28,3 +28,9 @@ description = "Unify files to consistently use one line ending"
 # --fix=(cr|crlf|lf|auto): Fix towards one of the options or pick the
 #         one used most widely in a file
 command = "{BEAUTY_TIPS} builtin bom -- --fix=auto -- {{files...}}"
+
+[[actions]]
+name = "debug_print_environment"
+description = "Print out the entire environment the processes run in"
+show-output = "always"
+command = "{BEAUTY_TIPS} builtin print-environment -- -- {{files...}}"
