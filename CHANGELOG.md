@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+ * `builtin/debug-print-environment` command to show the environment the
+   started processes run in
+ * Pass more information to the processes being run in the environment:
+   * BEAUTYTIPS_INPUTS: Where the input file list came from
+   * BEAUTYTIPS_VCS: The VCS being used (if INPUTS is `vcs`)
+   * BEAUTYTIPS_VCS_FROM_REV and BEAUTYTIPS_VCS_TO_REV: The revision range
+     to compare (empty if default)
+
 ## [0.1.2] - 2024-06-16
 
 * Add windows support

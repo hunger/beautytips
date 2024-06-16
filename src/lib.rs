@@ -6,7 +6,7 @@ mod errors;
 pub(crate) mod util;
 pub(crate) mod vcs;
 
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use actions::ActionUpdateReceiver;
 pub use actions::{
@@ -22,6 +22,13 @@ pub struct VcsInput {
     pub from_revision: Option<String>,
     /// The revision to stop the comparison at (or None for default)
     pub to_revision: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ExecutionContext {
+    pub root_directory: PathBuf,
+    pub extra_environment: HashMap<String, String>,
+    pub files_to_process: Vec<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,37 +63,57 @@ pub trait Reporter {
 async fn collect_input_files_impl(
     current_directory: PathBuf,
     inputs: InputFiles,
-) -> Result<(PathBuf, Vec<PathBuf>)> {
+) -> Result<ExecutionContext> {
     assert!(current_directory.is_absolute());
 
-    let (root_directory, files) = match inputs {
+    let mut context = match inputs {
         InputFiles::Vcs(config) => vcs::find_files_changed(current_directory, config).await,
-        InputFiles::FileList(files) => Ok((current_directory, files)),
+        InputFiles::FileList(files) => Ok(ExecutionContext {
+            root_directory: current_directory,
+            extra_environment: HashMap::from([(
+                "BEAUTYTIPS_INPUT".to_string(),
+                "files".to_string(),
+            )]),
+            files_to_process: files,
+        }),
         InputFiles::AllFiles(base_dir) => {
             let files = ignore::WalkBuilder::new(base_dir.clone())
                 .build()
                 .map(|d| d.map(ignore::DirEntry::into_path))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| errors::Error::new_directory_walk(base_dir.clone(), e))?;
-            Ok((base_dir, files))
+            Ok(ExecutionContext {
+                root_directory: current_directory,
+                extra_environment: HashMap::from([(
+                    "BEAUTYTIPS_INPUT".to_string(),
+                    "dir".to_string(),
+                )]),
+                files_to_process: files,
+            })
         }
     }?;
 
-    let root_directory = tokio::fs::canonicalize(&root_directory)
+    let root_directory = tokio::fs::canonicalize(&context.root_directory)
         .await
         .map_err(|e| {
-            Error::new_io_error(&format!("Could not canonicalize '{root_directory:?}"), e)
+            Error::new_io_error(
+                &format!("Could not canonicalize '{:?}", context.root_directory),
+                e,
+            )
         })?;
 
     std::env::set_current_dir(&root_directory).map_err(|e| {
         Error::new_io_error(
-            &format!("Failed to set current directory to {root_directory:?}"),
+            &format!(
+                "Failed to set current directory to {:?}",
+                context.root_directory
+            ),
             e,
         )
     })?;
 
     let mut canonical_files = Vec::new();
-    for f in &files {
+    for f in &context.files_to_process {
         let meta = tokio::fs::metadata(&f)
             .await
             .map_err(|e| Error::new_io_error(&format!("Failed to get metadata for {f:?}"), e))?;
@@ -106,8 +133,9 @@ async fn collect_input_files_impl(
             canonical_files.push(root_directory.join(f));
         }
     }
+    context.files_to_process = canonical_files;
 
-    Ok((root_directory, canonical_files))
+    Ok(context)
 }
 
 #[tracing::instrument(skip(reporter))]
@@ -159,6 +187,12 @@ pub fn collect_input_files<'a>(
 
             collect_input_files_impl(current_directory, inputs).await
         })
+        .map(|mut context| {
+            (
+                std::mem::take(&mut context.root_directory),
+                std::mem::take(&mut context.files_to_process),
+            )
+        })
 }
 
 /// Run beautytips
@@ -185,11 +219,12 @@ pub fn run<'a>(
             let _span = tracing::span!(tracing::Level::TRACE, "tokio_runtime");
             tracing::trace!("Inside tokio runtime block");
 
-            let (root_directory, files) =
+            let context =
                 collect_input_files_impl(current_directory, inputs).await?;
 
             tracing::debug!(
-                "Detected root directory: {root_directory:?} with changed files: {files:?}"
+                "Detected root directory: {:?} with changed files: {:?}",
+                context.root_directory, context.files_to_process
             );
 
             // # Safety: actions are valid during the entire time the
@@ -208,7 +243,7 @@ pub fn run<'a>(
 
                 tracing::debug!("Runner task started");
 
-                let result = actions::run(root_directory, tx, actions, files).await;
+                let result = actions::run(context, tx, actions).await;
 
                 tracing::debug!("Runner task finished");
 

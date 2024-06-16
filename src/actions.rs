@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
 
 mod args;
 pub(crate) mod inputs;
@@ -116,6 +116,7 @@ async fn report(sender: &ActionUpdateSender, message: ActionUpdate) {
 #[tracing::instrument(skip(inputs))]
 async fn run_single_action(
     current_directory: PathBuf,
+    extra_environment: Arc<HashMap<String, String>>,
     sender: ActionUpdateSender,
     action: &'static ActionDefinition,
     inputs: inputs::InputQuery,
@@ -129,16 +130,17 @@ async fn run_single_action(
         .await
         .expect("Failed to send start message to reporter");
 
+    let action_id = format!("{}/{}", action.source, action.id);
     if std::env::var("SKIP")
         .unwrap_or_default()
-        .split('\n')
-        .any(|s| s == action.id)
+        .split(',')
+        .any(|s| s == action_id)
     {
-        tracing::trace!("Skipping '{}'", action.id);
+        tracing::trace!("Skipping '{}'", action_id);
         report(
             &sender,
             ActionUpdate::Done {
-                action_id: action.id.clone(),
+                action_id: action_id.clone(),
                 result: ActionResult::Skipped,
             },
         )
@@ -147,11 +149,11 @@ async fn run_single_action(
     }
 
     let Some(command) = action.command.first() else {
-        tracing::error!("No command in action '{}'", action.id);
-        let message = format!("No command defined in action '{}'", action.id);
+        tracing::error!("No command in action '{}'", action_id);
+        let message = format!("No command defined in action '{action_id}'");
         sender
             .send(ActionUpdate::Done {
-                action_id: action.id.clone(),
+                action_id: action_id.clone(),
                 result: ActionResult::Error {
                     message: message.clone(),
                 },
@@ -167,7 +169,7 @@ async fn run_single_action(
         Ok(None) => {
             sender
                 .send(ActionUpdate::Done {
-                    action_id: action.id.clone(),
+                    action_id: action_id.clone(),
                     result: ActionResult::NotApplicable,
                 })
                 .await
@@ -177,7 +179,7 @@ async fn run_single_action(
         Err(e) => {
             sender
                 .send(ActionUpdate::Done {
-                    action_id: action.id.clone(),
+                    action_id: action_id.clone(),
                     result: ActionResult::Error {
                         message: format!("Argument parsing failed: {e}"),
                     },
@@ -196,19 +198,20 @@ async fn run_single_action(
         let output = tokio::process::Command::new(command)
             .current_dir(current_directory.clone())
             .args(args.args_iter())
+            .envs(extra_environment.iter())
             .output()
             .await
             .map_err(|e| crate::Error::new_io_error(&format!("Could not start '{command}'"), e))?;
 
         tracing::trace!(
             "result of running action '{}' ({} {}): {output:?}",
-            action.id,
+            action_id,
             command,
             args.print()
         );
 
         if output.status.code() != Some(action.expected_exit_code) {
-            tracing::debug!("Unexpected return code for action '{}'", action.id);
+            tracing::debug!("Unexpected return code for action '{}'", action_id);
             invalid_exit_code = true;
         }
 
@@ -227,7 +230,7 @@ async fn run_single_action(
     }
 
     if invalid_exit_code {
-        tracing::trace!("Failure running '{}'", action.id);
+        tracing::trace!("Failure running '{}'", action_id);
         if action.show_output == OutputCondition::Never
             || action.show_output == OutputCondition::Success
         {
@@ -238,13 +241,13 @@ async fn run_single_action(
         report(
             &sender,
             ActionUpdate::Done {
-                action_id: action.id.clone(),
+                action_id: action_id.clone(),
                 result: ActionResult::Warn { stdout, stderr },
             },
         )
         .await;
     } else {
-        tracing::trace!("Success running '{}'", action.id);
+        tracing::trace!("Success running '{}'", action_id);
         if action.show_output == OutputCondition::Never
             || action.show_output == OutputCondition::Failure
         {
@@ -255,7 +258,7 @@ async fn run_single_action(
         report(
             &sender,
             ActionUpdate::Done {
-                action_id: action.id.clone(),
+                action_id: action_id.clone(),
                 result: ActionResult::Ok { stdout, stderr },
             },
         )
@@ -271,24 +274,29 @@ async fn run_single_action(
 /// Not sure yet.
 #[tracing::instrument]
 pub async fn run(
-    current_directory: PathBuf,
+    mut context: crate::ExecutionContext,
     sender: ActionUpdateSender,
     actions: ActionDefinitionIterator<'static>,
-    files: Vec<PathBuf>,
 ) -> crate::Result<()> {
     tracing::trace!("Starting actions");
-    let cache_handle = inputs::setup_input_cache(current_directory.clone(), files);
+    let cache_handle = inputs::setup_input_cache(
+        context.root_directory.clone(),
+        std::mem::take(&mut context.files_to_process),
+    );
     let mut join_set = tokio::task::JoinSet::new();
+
+    let extra_environment = Arc::new(context.extra_environment);
 
     // parallel phase:
     tracing::trace!("Entering parallel run phase");
     for a in actions.clone().filter(|ad| !ad.run_sequentially) {
-        let cd = current_directory.clone();
+        let cd = context.root_directory.clone();
+        let ee = extra_environment.clone();
         let tx = sender.clone();
 
         tracing::trace!("Spawning task for action {}", a.id);
 
-        join_set.spawn(run_single_action(cd, tx, a, cache_handle.query()));
+        join_set.spawn(run_single_action(cd, ee, tx, a, cache_handle.query()));
     }
 
     tracing::trace!("Joining actions: {}", join_set.len());
@@ -301,12 +309,13 @@ pub async fn run(
     // sequential phase:
     tracing::trace!("Entering sequential run phase");
     for a in actions.filter(|ad| ad.run_sequentially) {
-        let cd = current_directory.clone();
+        let cd = context.root_directory.clone();
+        let ee = extra_environment.clone();
         let tx = sender.clone();
 
         tracing::trace!("Spawning task for action {}", a.id);
 
-        run_single_action(cd, tx, a, cache_handle.query()).await?;
+        run_single_action(cd, ee, tx, a, cache_handle.query()).await?;
     }
 
     tracing::trace!("All actions started");

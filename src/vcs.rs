@@ -4,8 +4,7 @@
 // spell-checker:ignore vcses
 
 use std::{
-    path::{Path, PathBuf},
-    sync::OnceLock,
+    collections::HashMap, path::{Path, PathBuf}, sync::OnceLock
 };
 
 mod git;
@@ -54,7 +53,7 @@ pub trait Vcs {
 #[must_use]
 fn known_vcses() -> Vec<DynVcs> {
     KNOWN_VCSES
-        .get_or_init(|| vec![Box::new(git::Git::new()), Box::new(jj::Jj::new())])
+        .get_or_init(|| vec![Box::new(jj::Jj::new()), Box::new(git::Git::new())])
         .iter()
         .map(Box::as_ref)
         .collect()
@@ -123,7 +122,7 @@ async fn vcs_for_configuration(
 pub(crate) async fn find_files_changed(
     current_directory: PathBuf,
     config: crate::VcsInput,
-) -> crate::Result<(PathBuf, Vec<PathBuf>)> {
+) -> crate::Result<crate::ExecutionContext> {
     let to_rev = config.to_revision.clone();
     let from_rev = config.from_revision.clone();
 
@@ -133,7 +132,17 @@ pub(crate) async fn find_files_changed(
         vcs.name()
     );
 
-    vcs.changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
-        .await
-        .map(|files| (repo_path, files))
+    let files_to_process = vcs.changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
+        .await?;
+
+    Ok(crate::ExecutionContext {
+        root_directory: repo_path,
+        extra_environment: HashMap::from([
+            ("BEAUTYTIPS_INPUT".to_string(), "vcs".to_string()),
+            ("BEAUTYTIPS_VCS".to_string(), vcs.name().to_string()),
+            ("BEAUTYTIPS_VCS_FROM_REV".to_string(), from_rev.unwrap_or_default()),
+            ("BEAUTYTIPS_VCS_TO_REV".to_string(), to_rev.unwrap_or_default()),
+        ]),
+        files_to_process,
+    })  
 }
