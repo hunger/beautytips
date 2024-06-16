@@ -18,6 +18,17 @@ pub type DynVcs = &'static (dyn Vcs + Sync + Send);
 
 static KNOWN_VCSES: OnceLock<Vec<BoxedVcs>> = OnceLock::new();
 
+pub fn output_to_string(input: &[u8]) -> String {
+    // SAFETY: This is OS output, it should be OK to convert to an OsStr (I hope)
+    let output = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(input) };
+
+    let output = output.to_string_lossy().to_string();
+    let output = output.strip_suffix('\n').unwrap_or(&output);
+    let output = output.strip_suffix('\r').unwrap_or(output);
+
+    output.to_string()
+}
+
 /// Trait used to support different version control systems
 #[async_trait::async_trait]
 pub trait Vcs {

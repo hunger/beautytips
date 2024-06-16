@@ -3,11 +3,7 @@
 
 // spell-checker:ignore interdiff
 
-use std::{
-    ffi::OsStr,
-    os::unix::ffi::OsStrExt,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::vcs;
 
@@ -57,11 +53,10 @@ impl vcs::Vcs for Jj {
             }
         }
 
-        Ok(output
-            .stdout
-            .split(|c| c == &b'\n')
-            .filter(|l| l.len() > 2 && &l[0..2] != b"D ")
-            .map(|l| PathBuf::from(OsStr::from_bytes(&l[2..])))
+        Ok(super::output_to_string(&output.stdout)
+            .lines()
+            .filter(|l| l.len() > 2 && &l[0..2] != "D ")
+            .map(|l| PathBuf::from(&l[2..]))
             .collect())
     }
 
@@ -76,12 +71,9 @@ impl vcs::Vcs for Jj {
 
         tracing::trace!("top level result: {output:?}");
 
-        if output.status.success() {
-            let output = std::ffi::OsStr::from_bytes(&output.stdout[..(output.stdout.len() - 1)]);
-            let path = PathBuf::from(output);
-            Some(path)
-        } else {
-            None
-        }
+        output
+            .status
+            .success()
+            .then_some(PathBuf::from(&super::output_to_string(&output.stdout)))
     }
 }

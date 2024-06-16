@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+* Add windows support
+
 ## [0.1.1] - 2024-06-16
 
 ## Fixed

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use crate::vcs;
@@ -40,12 +39,10 @@ impl vcs::Vcs for Git {
             .await
             .ok()?;
         tracing::trace!("top level result: {output:?}");
-        if output.status.success() {
-            let output = std::ffi::OsStr::from_bytes(&output.stdout[..(output.stdout.len() - 1)]);
-            let path = PathBuf::from(output);
-            Some(path)
-        } else {
-            None
-        }
+
+        output
+            .status
+            .success()
+            .then_some(PathBuf::from(&super::output_to_string(&output.stdout)))
     }
 }
