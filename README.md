@@ -9,7 +9,7 @@ Typically you run linters and formatters on code in a repository.
 
 ## Features
 
-* [x] works with `git` repos
+* [ ] works with `git` repos
   * [ ] can configure itself as commit hook
 * [x] works with `jj` repos
 * [ ] works with `pijul` repos

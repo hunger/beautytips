@@ -334,8 +334,7 @@ impl ConfigurationSource {
         let config_data =
             std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
 
-        Self::from_string(config_data.as_str(), source_name)
-            .context("Failed to parse toml file {value:?}")
+        Self::from_string(config_data.as_str(), source_name).context("Failed to parse toml string")
     }
 }
 
@@ -702,11 +701,17 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         .ok_or(anyhow::anyhow!("Config directory not found"))?;
     let config_file = config_dir.join("config.toml");
 
+    if !config_file.exists() {
+        return Ok(base);
+    }
+
     let user = ConfigurationSource::from_path(
         config_file.as_path(),
         ActionSource::new_str("user").unwrap(),
     )
-    .context("Failed to parse configuration file {config_file:?}")?;
+    .context(format!(
+        "Failed to parse configuration file {config_file:?}"
+    ))?;
     base.merge(user)
 }
 

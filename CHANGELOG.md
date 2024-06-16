@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## Fixed
+
+* user config file is now ignored when not present
+
+## Internal
+
+* Do not try to build windows binaries on release: Those do not work
+* Test MacOS in CI
+
 ## [0.1.0] - 2024-06-15
 
 Initial Release
