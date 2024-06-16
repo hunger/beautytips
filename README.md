@@ -16,11 +16,11 @@ Typically you run linters and formatters on code in a repository.
 * [x] runs tools in parallel if possible
 * [x] Supports configurable tools
   * [x] ... on a user level
-  * [x] ... on a repository level
+  * [ ] ... on a repository level
 * [x] Has builtin definitions
-  * [x] for rustfmt, clippy, etc.
-  * [x] github actions
-  * [x] cspell
+  * [x] for rustfmt, clippy, etc. (needs cargo + co. installed)
+  * [x] github actions (needs `actionlint` installed)
+  * [x] cspell (needs `cspell` installed)
 * [ ] can manage the installation of necessary tools
 
 ## Supported Platforms
