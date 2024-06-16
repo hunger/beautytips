@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.1.1] - 2024-06-16
+
 ## Fixed
 
 * user config file is now ignored when not present
@@ -22,5 +24,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 Initial Release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/hunger/beautytips/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hunger/beautytips/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hunger/beautytips/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hunger/beautytips/compare/45bd7663096c68181152f84e11a881a6111e5549...v0.1.0
