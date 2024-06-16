@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::io::Write;
+use std::io::{self, Write};
+
+use crossterm::{cursor, style, terminal};
 
 #[derive(Default)]
 pub struct Reporter {
@@ -13,7 +15,7 @@ impl Reporter {
     fn print_status(&mut self) {
         self.clear_status();
 
-        let (width, _) = termion::terminal_size().unwrap_or((80, 40));
+        let (width, _) = terminal::size().unwrap_or((80, 40));
         let mut running = self.running.join(", ");
         let max_running = usize::from(width) - 15;
 
@@ -21,18 +23,26 @@ impl Reporter {
             running.truncate(max_running);
             running.push_str("...");
         }
-        print!("{}Running: {running}", termion::cursor::Save);
-        std::io::stdout().flush().expect("Flushing failed");
+
+        crossterm::queue!(
+            io::stdout(),
+            cursor::SavePosition,
+            style::Print(format!("Running {running}")),
+        )
+        .expect("print failed");
+
+        io::stdout().flush().expect("Flushing failed");
         self.has_status = true;
     }
 
     fn clear_status(&mut self) {
         if self.has_status {
-            print!(
-                "{}{}",
-                termion::cursor::Restore,
-                termion::clear::AfterCursor
-            );
+            crossterm::queue!(
+                io::stdout(),
+                cursor::RestorePosition,
+                terminal::Clear(terminal::ClearType::FromCursorDown),
+            )
+            .expect("print failed");
         }
         self.has_status = false;
     }
@@ -66,10 +76,7 @@ fn stdout_and_err_to_str(stdout: &[u8], stderr: &[u8]) -> String {
         output = format!("{output}\n{}", to_str(stderr));
     }
     if !output.is_empty() {
-        output = format!(
-            "\n{}{output}",
-            termion::color::Fg(termion::color::LightBlack)
-        );
+        output = format!("\n{output}",);
     }
 
     output
@@ -94,40 +101,56 @@ impl beautytips::Reporter for Reporter {
         match result {
             beautytips::ActionResult::Ok { stdout, stderr } => {
                 let output = stdout_and_err_to_str(&stdout, &stderr);
-                println!(
-                    "{}✅ {action_id} [OK]{output}{}",
-                    termion::color::Fg(termion::color::Green),
-                    termion::color::Fg(termion::color::Reset)
-                );
+                crossterm::queue!(
+                    io::stdout(),
+                    style::SetForegroundColor(style::Color::Green),
+                    style::Print(format!("✅ {action_id} [OK]")),
+                    style::SetForegroundColor(style::Color::DarkGrey),
+                    style::Print(output),
+                    style::Print('\n'),
+                    style::ResetColor
+                )
+                .expect("print failed");
             }
             beautytips::ActionResult::Skipped => {
-                println!(
-                    "{}🦥 {action_id} [SKIPPED]{}",
-                    termion::color::Fg(termion::color::Blue),
-                    termion::color::Fg(termion::color::Reset)
-                );
+                crossterm::queue!(
+                    io::stdout(),
+                    style::SetForegroundColor(style::Color::Blue),
+                    style::Print(format!("🦥 {action_id} [SKIPPED]\n")),
+                    style::ResetColor,
+                )
+                .expect("print failed");
             }
             beautytips::ActionResult::NotApplicable => {
-                println!(
-                    "{}🚙 {action_id} [NOT APPLICABLE]{}",
-                    termion::color::Fg(termion::color::Blue),
-                    termion::color::Fg(termion::color::Reset)
-                );
+                crossterm::queue!(
+                    io::stdout(),
+                    style::SetForegroundColor(style::Color::Blue),
+                    style::Print(format!("🚙 {action_id} [NOT APPLICABLE]\n")),
+                    style::ResetColor,
+                )
+                .expect("print failed");
             }
             beautytips::ActionResult::Warn { stdout, stderr } => {
                 let output = stdout_and_err_to_str(&stdout, &stderr);
-                println!(
-                    "{}💡 {action_id} [WARN]{output}{}",
-                    termion::color::Fg(termion::color::LightYellow),
-                    termion::color::Fg(termion::color::Reset)
-                );
+                crossterm::queue!(
+                    io::stdout(),
+                    style::SetForegroundColor(style::Color::Yellow),
+                    style::Print(format!("💡 {action_id} [WARN]")),
+                    style::SetForegroundColor(style::Color::DarkGrey),
+                    style::Print(output),
+                    style::Print('\n'),
+                    style::ResetColor,
+                )
+                .expect("print failed");
             }
             beautytips::ActionResult::Error { message } => {
-                println!(
-                    "{}🚨 {action_id} [ERROR]: {message}{}",
-                    termion::color::Fg(termion::color::Red),
-                    termion::color::Fg(termion::color::Reset),
-                );
+                crossterm::queue!(
+                    io::stdout(),
+                    style::SetForegroundColor(style::Color::Red),
+                    style::Print(format!("🚨 {action_id} [ERROR]: {message}\n")),
+                    style::ResetColor,
+                )
+                .expect("print failed");
             }
         };
 

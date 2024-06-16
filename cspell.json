@@ -8,13 +8,13 @@
         "aarch",
         "beautytips",
         "clippy",
+        "crossterm",
         "msvc",
         "oneshot",
         "pijul",
         "rustfmt",
         "serde",
         "taplo",
-        "termion"
     ],
     "flagWords": [
         "hte"

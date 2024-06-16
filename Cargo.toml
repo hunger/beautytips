@@ -32,13 +32,13 @@ anyhow = { version = "1.0.86" }
 async-trait = { version = "0.1.80" }
 cargo_toml = { version = "0.20.2" }
 clap = { version = "4.5.4", features = ["cargo", "env", "derive"] }
+crossterm = { version = "0.27.0", default-features = false, features = [ "windows" ] }
 dirs = { version = "5.0.1" }
 futures = { version = "0.3.30" }
 glob = { version = "0.3.1", default-features = false }
 ignore = { version = "0.4.22" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 shell-words = { version = "1.1.0" }
-termion = { version = "4.0.0" }
 tokio = { version = "1.38.0", features = ["macros", "rt", "rt-multi-thread", "process", "sync", "time", "fs"] }
 toml = { version = "0.8.14", features = ["preserve_order"] }
 tracing = { version = "0.1.40" }
