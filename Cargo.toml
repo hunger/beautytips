@@ -44,6 +44,9 @@ toml = { version = "0.8.14", features = ["preserve_order"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
+[dev-dependencies]
+const_format = "0.2.32"
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"
@@ -63,3 +66,4 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 pr-run-mode = "plan"
 # Whether to install an updater program
 install-updater = false
+

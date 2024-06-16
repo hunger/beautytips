@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 mod args;
 pub(crate) mod inputs;
@@ -163,7 +167,14 @@ async fn run_single_action(
         return Err(crate::Error::new_invalid_configuration(message));
     };
 
-    let args = args::parse_args(&action.command, inputs, &action.input_filters).await;
+    let args = args::parse_args(
+        &action.command,
+        inputs,
+        &current_directory,
+        &action.input_filters,
+    )
+    .await;
+
     let mut args = match args {
         Ok(Some(args)) => args,
         Ok(None) => {

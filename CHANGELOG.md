@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
    * BEAUTYTIPS_VCS_FROM_REV and BEAUTYTIPS_VCS_TO_REV: The revision range
      to compare (empty if default)
 
+### Fixed
+
+ * Input filters got some tests and fixes
+ * The `github/check_actions` fixed to not run always
+
 ## [0.1.2] - 2024-06-16
 
 * Add windows support
