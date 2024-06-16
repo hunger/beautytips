@@ -23,6 +23,14 @@ Typically you run linters and formatters on code in a repository.
   * [x] cspell
 * [ ] can manage the installation of necessary tools
 
+## Supported Platforms
+
+| OS      | Status                                  |
+| ------- | --------------------------------------- |
+| Linux   | builds and works                        |
+| MacOS   | builds, but may or may not do something |
+| Windows | builds, but may or may not do something |
+
 ## Example usage
 
 List all known actions:
