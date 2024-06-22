@@ -219,12 +219,12 @@ pub fn run<'a>(
             let _span = tracing::span!(tracing::Level::TRACE, "tokio_runtime");
             tracing::trace!("Inside tokio runtime block");
 
-            let context =
-                collect_input_files_impl(current_directory, inputs).await?;
+            let context = collect_input_files_impl(current_directory, inputs).await?;
 
             tracing::debug!(
                 "Detected root directory: {:?} with changed files: {:?}",
-                context.root_directory, context.files_to_process
+                context.root_directory,
+                context.files_to_process
             );
 
             // # Safety: actions are valid during the entire time the

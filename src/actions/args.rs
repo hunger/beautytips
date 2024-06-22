@@ -176,7 +176,9 @@ async fn input_arg(
                     return false;
                 };
                 current_filters.is_empty()
-                    || current_filters.iter().any(|f| f.matches_path_with(rel_path, match_options.clone()))
+                    || current_filters
+                        .iter()
+                        .any(|f| f.matches_path_with(rel_path, match_options.clone()))
             })
             .collect();
 
@@ -458,10 +460,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_arg_files_filter_github_actions() {
-        let (paths, is_array) = test_input_arg("{{files...}}", &[".github/**/*.yaml", ".github/**/*.yml"])
-            .await
-            .unwrap()
-            .unwrap();
+        let (paths, is_array) =
+            test_input_arg("{{files...}}", &[".github/**/*.yaml", ".github/**/*.yml"])
+                .await
+                .unwrap()
+                .unwrap();
 
         assert_eq!(is_array, true);
         assert_eq!(paths.len(), 0);

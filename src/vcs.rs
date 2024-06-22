@@ -4,7 +4,9 @@
 // spell-checker:ignore vcses
 
 use std::{
-    collections::HashMap, path::{Path, PathBuf}, sync::OnceLock
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 mod git;
@@ -132,7 +134,8 @@ pub(crate) async fn find_files_changed(
         vcs.name()
     );
 
-    let files_to_process = vcs.changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
+    let files_to_process = vcs
+        .changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
         .await?;
 
     Ok(crate::ExecutionContext {
@@ -140,9 +143,15 @@ pub(crate) async fn find_files_changed(
         extra_environment: HashMap::from([
             ("BEAUTYTIPS_INPUT".to_string(), "vcs".to_string()),
             ("BEAUTYTIPS_VCS".to_string(), vcs.name().to_string()),
-            ("BEAUTYTIPS_VCS_FROM_REV".to_string(), from_rev.unwrap_or_default()),
-            ("BEAUTYTIPS_VCS_TO_REV".to_string(), to_rev.unwrap_or_default()),
+            (
+                "BEAUTYTIPS_VCS_FROM_REV".to_string(),
+                from_rev.unwrap_or_default(),
+            ),
+            (
+                "BEAUTYTIPS_VCS_TO_REV".to_string(),
+                to_rev.unwrap_or_default(),
+            ),
         ]),
         files_to_process,
-    })  
+    })
 }
