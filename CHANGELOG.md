@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.1.3] - 2024-06-22
+
 ### Added
 
  * `builtin/debug-print-environment` command to show the environment the
@@ -43,7 +45,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 Initial Release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/hunger/beautytips/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/hunger/beautytips/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/hunger/beautytips/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/hunger/beautytips/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hunger/beautytips/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hunger/beautytips/compare/45bd7663096c68181152f84e11a881a6111e5549...v0.1.0
