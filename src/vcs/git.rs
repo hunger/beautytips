@@ -5,6 +5,16 @@ use std::path::{Path, PathBuf};
 
 use crate::vcs;
 
+use anyhow::Context;
+
+pub fn zero_split_files(output: &[u8]) -> Vec<PathBuf> {
+    output
+        .split(|i| *i == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| PathBuf::from(&super::output_to_string(s)))
+        .collect()
+}
+
 #[derive(Debug, Default)]
 pub struct Git {}
 
@@ -23,11 +33,45 @@ impl vcs::Vcs for Git {
     #[tracing::instrument]
     async fn changed_files(
         &self,
-        _current_directory: &Path,
-        _from_revision: Option<&String>,
-        _to_revision: Option<&String>,
+        current_directory: &Path,
+        from_revision: &Option<String>,
+        to_revision: &Option<String>,
     ) -> crate::Result<Vec<std::path::PathBuf>> {
-        todo!()
+        let args = {
+            let mut tmp = vec![
+                "diff".to_string(),
+                "--name-only".to_string(),
+                "--no-ext-diff".to_string(),
+                "-z".to_string(),
+            ];
+            match (from_revision, to_revision) {
+                (None, None) => { /* do nothing */ }
+                (Some(from), None) => tmp.push(from.clone()),
+                (None, Some(to)) => {
+                    tmp.push(format!("{to}~"));
+                    tmp.push(to.clone());
+                }
+                (Some(from), Some(to)) => {
+                    tmp.push(from.clone());
+                    tmp.push(to.clone());
+                }
+            };
+            tmp
+        };
+
+        let output = tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(current_directory)
+            .output()
+            .await
+            .context("Failed to run git")?;
+
+        tracing::trace!("diff {from_revision:?} {to_revision:?} => {output:?}");
+
+        if output.status.success() {
+            return Ok(zero_split_files(&output.stdout));
+        }
+        Ok(vec![])
     }
 
     #[tracing::instrument]

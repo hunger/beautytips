@@ -70,7 +70,7 @@ async fn collect_input_files_impl(
     assert!(current_directory.is_absolute());
 
     let mut context = match inputs {
-        InputFiles::Vcs(config) => vcs::find_files_changed(current_directory, config).await,
+        InputFiles::Vcs(config) => vcs::find_changed_files(current_directory, config).await,
         InputFiles::FileList(files) => Ok(ExecutionContext {
             root_directory: current_directory,
             extra_environment: HashMap::from([(

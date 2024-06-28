@@ -44,8 +44,8 @@ pub trait Vcs {
     async fn changed_files(
         &self,
         current_directory: &Path,
-        from_revision: Option<&String>,
-        to_revision: Option<&String>,
+        from_revision: &Option<String>,
+        to_revision: &Option<String>,
     ) -> crate::Result<Vec<PathBuf>>;
 
     /// Find the directory root
@@ -113,7 +113,7 @@ async fn vcs_for_configuration(
 ///
 /// Reports invalid configuration errors or others when the data could not get retrieved
 #[tracing::instrument]
-pub(crate) async fn find_files_changed(
+pub(crate) async fn find_changed_files(
     current_directory: PathBuf,
     config: crate::VcsInput,
 ) -> crate::Result<crate::ExecutionContext> {
@@ -127,7 +127,7 @@ pub(crate) async fn find_files_changed(
     );
 
     let files_to_process = vcs
-        .changed_files(&repo_path, from_rev.as_ref(), to_rev.as_ref())
+        .changed_files(&repo_path, &from_rev, &to_rev)
         .await?;
 
     Ok(crate::ExecutionContext {

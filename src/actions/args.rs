@@ -324,18 +324,18 @@ mod tests {
         "/tmp/51bb3d94"
     };
 
-    const PATH_0: &str = &const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "README.md");
-    const PATH_1: &str = &const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "main.rs");
+    const PATH_0: &str = const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "README.md");
+    const PATH_1: &str = const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "main.rs");
     const PATH_2: &str =
-        &const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "Cargo.toml");
-    const PATH_3: &str = &const_format::concatcp!(
+        const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "Cargo.toml");
+    const PATH_3: &str = const_format::concatcp!(
         ROOT_DIR,
         std::path::MAIN_SEPARATOR,
         "docs",
         std::path::MAIN_SEPARATOR,
         "doc.md"
     );
-    const PATH_4: &str = &const_format::concatcp!(
+    const PATH_4: &str = const_format::concatcp!(
         ROOT_DIR,
         std::path::MAIN_SEPARATOR,
         "docs",

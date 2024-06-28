@@ -28,11 +28,11 @@ impl vcs::Vcs for Jj {
     async fn changed_files(
         &self,
         current_directory: &Path,
-        from_revision: Option<&String>,
-        to_revision: Option<&String>,
+        from_revision: &Option<String>,
+        to_revision: &Option<String>,
     ) -> crate::Result<Vec<std::path::PathBuf>> {
-        let from = from_revision.map_or("--from=@-".to_string(), |fr| format!("--from={fr}"));
-        let to = to_revision.map_or("--to=@".to_string(), |to| format!("--to={to}"));
+        let from = from_revision.as_ref().map_or("--from=@-".to_string(), |fr| format!("--from={fr}"));
+        let to = to_revision.as_ref().map_or("--to=@".to_string(), |to| format!("--to={to}"));
 
         let output = tokio::process::Command::new(self.name())
             .args(["--color=never", "interdiff", "-s", &from, &to])
