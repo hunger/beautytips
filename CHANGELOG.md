@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+ * `--from-rev` and `--to-rev` are now accepted on the command line to
+   set the range of changes to look at when using a VCS
+ * Get changed files from git
+
 ## [0.1.3] - 2024-06-22
 
 ### Added
