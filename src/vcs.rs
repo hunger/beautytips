@@ -130,6 +130,8 @@ pub(crate) async fn find_changed_files(
         .changed_files(&repo_path, &from_rev, &to_rev)
         .await?;
 
+    tracing::debug!("VCS returned the following files to process: {files_to_process:?}");
+
     Ok(crate::ExecutionContext {
         root_directory: repo_path,
         extra_environment: HashMap::from([

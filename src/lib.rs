@@ -96,6 +96,8 @@ async fn collect_input_files_impl(
         }
     }?;
 
+    tracing::debug!("Context is: {context:?}");
+
     let root_directory = tokio::fs::canonicalize(&context.root_directory)
         .await
         .context(format!("Could not canonicalize '{:?}", context.root_directory))?;
