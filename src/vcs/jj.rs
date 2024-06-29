@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 use crate::vcs;
 
+use anyhow::Context;
+
 #[derive(Debug, Default)]
 pub struct Jj {}
 
@@ -37,19 +39,13 @@ impl vcs::Vcs for Jj {
             .current_dir(current_directory)
             .output()
             .await
-            .map_err(|e| {
-                crate::Error::new_io_error(&format!("Could not run {}", self.name()), e)
-            })?;
+            .context(format!("Could not run {}", self.name()))?;
 
         tracing::trace!("changed files result: {output:?}");
 
         if let Some(actual) = output.status.code() {
             if actual != 0 {
-                return Err(crate::Error::new_unexpected_exit_code(
-                    self.name(),
-                    0,
-                    actual,
-                ));
+                return Err(anyhow::anyhow!(format!("Unexpected error code {actual}, expected was 0")));
             }
         }
 

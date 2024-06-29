@@ -2,7 +2,6 @@
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
 pub(crate) mod actions;
-mod errors;
 pub(crate) mod util;
 pub(crate) mod vcs;
 
@@ -12,7 +11,11 @@ use actions::ActionUpdateReceiver;
 pub use actions::{
     inputs::InputFilters, ActionDefinition, ActionDefinitionIterator, OutputCondition,
 };
-pub use errors::{Error, Result};
+
+use anyhow::Context;
+
+type Result<T> = std::result::Result<T, anyhow::Error>;
+type SendableResult<T> = std::result::Result<T, String>;
 
 #[derive(Clone, Debug, Default)]
 pub struct VcsInput {
@@ -80,8 +83,8 @@ async fn collect_input_files_impl(
             let files = ignore::WalkBuilder::new(base_dir.clone())
                 .build()
                 .map(|d| d.map(ignore::DirEntry::into_path))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| errors::Error::new_directory_walk(base_dir.clone(), e))?;
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .context("Failed to walk directory tree below '{base_dir:?}'")?;
             Ok(ExecutionContext {
                 root_directory: current_directory,
                 extra_environment: HashMap::from([(
@@ -95,35 +98,26 @@ async fn collect_input_files_impl(
 
     let root_directory = tokio::fs::canonicalize(&context.root_directory)
         .await
-        .map_err(|e| {
-            Error::new_io_error(
-                &format!("Could not canonicalize '{:?}", context.root_directory),
-                e,
-            )
-        })?;
+        .context(format!("Could not canonicalize '{:?}", context.root_directory))?;
 
-    std::env::set_current_dir(&root_directory).map_err(|e| {
-        Error::new_io_error(
-            &format!(
+    std::env::set_current_dir(&root_directory).
+        context(format!(
                 "Failed to set current directory to {:?}",
                 context.root_directory
-            ),
-            e,
-        )
-    })?;
+            ))?;
 
     let mut canonical_files = Vec::new();
     for f in &context.files_to_process {
         let meta = tokio::fs::metadata(&f)
             .await
-            .map_err(|e| Error::new_io_error(&format!("Failed to get metadata for {f:?}"), e))?;
+            .context(format!("Failed to get metadata for {f:?}"))?;
         if meta.is_dir() {
             continue;
         }
 
         let f = tokio::fs::canonicalize(&f)
             .await
-            .map_err(|e| Error::new_io_error(&format!("Could not canonicalize {f:?}"), e))?;
+            .context(format!("Could not canonicalize {f:?}"))?;
 
         if f.is_absolute() {
             if f.starts_with(&root_directory) {

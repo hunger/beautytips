@@ -148,7 +148,7 @@ async fn input_arg(
     inputs: inputs::InputQuery,
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
-) -> crate::Result<Option<(Vec<PathBuf>, bool)>> {
+) -> crate::SendableResult<Option<(Vec<PathBuf>, bool)>> {
     static EMPTY: Vec<glob::Pattern> = vec![];
 
     if arg.starts_with("{{") && arg.ends_with("}}") {
@@ -169,7 +169,7 @@ async fn input_arg(
         let paths = inputs
             .inputs(input_name.to_string())
             .await
-            .map_err(|e| crate::Error::new_input_generator(input_name.to_string(), e.to_string()))?
+            .map_err(|e| format!("Failed to get inputs for {input_name:?}: {e}"))?
             .into_iter()
             .filter(|p| {
                 let Ok(rel_path) = p.strip_prefix(root_directory) else {
@@ -194,7 +194,7 @@ pub(crate) async fn parse_arg(
     inputs: inputs::InputQuery,
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
-) -> crate::Result<Option<Vec<Arg>>> {
+) -> crate::SendableResult<Option<Vec<Arg>>> {
     let argument_parts = split_arg(arg);
 
     let mut result = Vec::new();
@@ -273,7 +273,7 @@ pub(crate) async fn parse_args(
     inputs: inputs::InputQuery,
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
-) -> crate::Result<Option<Args>> {
+) -> crate::SendableResult<Option<Args>> {
     let mut parsed_args = Vec::with_capacity(args.len() - 1);
 
     for a in args.iter().skip(1) {
@@ -348,7 +348,7 @@ mod tests {
     async fn test_input_arg(
         arg: &str,
         filters: &[&str],
-    ) -> crate::Result<Option<(Vec<PathBuf>, bool)>> {
+    ) -> crate::SendableResult<Option<(Vec<PathBuf>, bool)>> {
         let input_cache = inputs::setup_input_cache(
             PathBuf::from(ROOT_DIR),
             vec![

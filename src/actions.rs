@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
+use anyhow::Context;
+
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -164,7 +166,7 @@ async fn run_single_action(
             })
             .await
             .expect("Failed to send message to reporter");
-        return Err(crate::Error::new_invalid_configuration(message));
+        return Err(anyhow::anyhow!(format!("Invalid configurtion: {message}")));
     };
 
     let args = args::parse_args(
@@ -212,7 +214,7 @@ async fn run_single_action(
             .envs(extra_environment.iter())
             .output()
             .await
-            .map_err(|e| crate::Error::new_io_error(&format!("Could not start '{command}'"), e))?;
+            .context(format!("Could not start '{command}"))?;
 
         tracing::trace!(
             "result of running action '{}' ({} {}): {output:?}",

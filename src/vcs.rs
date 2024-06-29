@@ -93,25 +93,17 @@ async fn vcs_for_configuration(
     if let Some(tool) = &config.tool {
         tracing::debug!("Looking for VCS {tool}");
         let Some(vcs) = vcs_by_name(tool) else {
-            return Err(crate::Error::new_invalid_configuration(format!(
-                "Version control system {tool} is not supported"
-            )));
+            return Err(anyhow::anyhow!(format!("Version control system '{tool}' is not supported")));
         };
 
         let Some(root_path) = vcs.repository_root(current_directory).await else {
-            return Err(crate::Error::new_invalid_configuration(format!(
-                "No repository of version control system {tool} found"
-            )));
+            return Err(anyhow::anyhow!(format!("No repository of version control system '{tool}' found")));
         };
 
         Ok((vcs, root_path))
     } else {
         tracing::debug!("Auto-detecting VCS");
-        auto_detect_vcs(current_directory).await.ok_or_else(|| {
-            crate::Error::new_invalid_configuration(
-                "Could not auto-detect a supported version control system".to_string(),
-            )
-        })
+        auto_detect_vcs(current_directory).await.ok_or(anyhow::anyhow!("Could not auto-detect a supported version control system"))
     }
 }
 

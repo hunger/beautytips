@@ -58,7 +58,7 @@ impl InputCacheHandle {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct GeneratorReply {
     input: String,
     data: InputQueryReplyMessage,
@@ -66,7 +66,7 @@ struct GeneratorReply {
 
 type InputQueryTx = tokio::sync::mpsc::Sender<InputQueryMessage>;
 type InputQueryRx = tokio::sync::mpsc::Receiver<InputQueryMessage>;
-type InputQueryReplyMessage = Result<Vec<PathBuf>, String>;
+type InputQueryReplyMessage = crate::SendableResult<Vec<PathBuf>>;
 type InputQueryReplyTx = tokio::sync::oneshot::Sender<InputQueryReplyMessage>;
 // type InputQueryReplyRx = tokio::sync::oneshot::Receiver<InputQueryReplyType>;
 
@@ -108,7 +108,7 @@ impl InputCache {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn handle_request(&mut self) -> Result<bool, String> {
+    async fn handle_request(&mut self) -> crate::SendableResult<bool> {
         tokio::select! {
             query = self.rx.recv() => {
                 self.handle_input_query(query)
@@ -120,7 +120,7 @@ impl InputCache {
     }
 
     #[tracing::instrument(skip(self, query))]
-    fn handle_input_query(&mut self, query: Option<InputQueryMessage>) -> Result<bool, String> {
+    fn handle_input_query(&mut self, query: Option<InputQueryMessage>) -> crate::SendableResult<bool> {
         let Some(query) = query else {
             return Ok(false);
         };
@@ -187,7 +187,7 @@ impl InputCache {
     }
 
     #[tracing::instrument(skip(self))]
-    fn handle_generator_reply(&mut self, reply: Option<GeneratorReply>) -> Result<bool, String> {
+    fn handle_generator_reply(&mut self, reply: Option<GeneratorReply>) -> crate::SendableResult<bool> {
         let Some(reply) = reply else {
             return Ok(true);
         };
