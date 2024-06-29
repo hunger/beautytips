@@ -25,7 +25,7 @@ struct CliVcsExtra {
     #[arg(long = "from-rev", requires = "vcs-input")]
     from_revision: Option<String>,
     #[arg(long = "to-rev", requires = "vcs-input")]
-    to_revision: Option<String>
+    to_revision: Option<String>,
 }
 
 /// Where to get files to look at from
@@ -89,7 +89,10 @@ pub struct CommandlineConfiguration {
     pub command: Command,
 }
 
-fn generate_input_files(inputs: &CliInputFiles, vcs_input_extra: &CliVcsExtra) -> anyhow::Result<beautytips::InputFiles> {
+fn generate_input_files(
+    inputs: &CliInputFiles,
+    vcs_input_extra: &CliVcsExtra,
+) -> anyhow::Result<beautytips::InputFiles> {
     if let Some(vcs) = &inputs.vcs {
         Ok(beautytips::InputFiles::Vcs(beautytips::VcsInput {
             tool: vcs.clone(),
@@ -113,10 +116,17 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
     let command = match cli.action {
         CliCommand::Builtin { action, arguments } => Command::Builtin { action, arguments },
         CliCommand::ListActions => Command::ListActions {},
-        CliCommand::ListFiles { source, vcs_input_extra } => Command::ListFiles {
+        CliCommand::ListFiles {
+            source,
+            vcs_input_extra,
+        } => Command::ListFiles {
             source: generate_input_files(&source, &vcs_input_extra)?,
         },
-        CliCommand::Run { source, actions, vcs_input_extra } => Command::RunActions {
+        CliCommand::Run {
+            source,
+            actions,
+            vcs_input_extra,
+        } => Command::RunActions {
             source: generate_input_files(&source, &vcs_input_extra)?,
             actions,
         },

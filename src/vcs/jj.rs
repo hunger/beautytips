@@ -31,8 +31,12 @@ impl vcs::Vcs for Jj {
         from_revision: &Option<String>,
         to_revision: &Option<String>,
     ) -> crate::Result<Vec<std::path::PathBuf>> {
-        let from = from_revision.as_ref().map_or("--from=@-".to_string(), |fr| format!("--from={fr}"));
-        let to = to_revision.as_ref().map_or("--to=@".to_string(), |to| format!("--to={to}"));
+        let from = from_revision
+            .as_ref()
+            .map_or("--from=@-".to_string(), |fr| format!("--from={fr}"));
+        let to = to_revision
+            .as_ref()
+            .map_or("--to=@".to_string(), |to| format!("--to={to}"));
 
         let output = tokio::process::Command::new(self.name())
             .args(["--color=never", "interdiff", "-s", &from, &to])
@@ -45,7 +49,9 @@ impl vcs::Vcs for Jj {
 
         if let Some(actual) = output.status.code() {
             if actual != 0 {
-                return Err(anyhow::anyhow!(format!("Unexpected error code {actual}, expected was 0")));
+                return Err(anyhow::anyhow!(format!(
+                    "Unexpected error code {actual}, expected was 0"
+                )));
             }
         }
 

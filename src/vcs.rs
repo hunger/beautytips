@@ -93,17 +93,25 @@ async fn vcs_for_configuration(
     if let Some(tool) = &config.tool {
         tracing::debug!("Looking for VCS {tool}");
         let Some(vcs) = vcs_by_name(tool) else {
-            return Err(anyhow::anyhow!(format!("Version control system '{tool}' is not supported")));
+            return Err(anyhow::anyhow!(format!(
+                "Version control system '{tool}' is not supported"
+            )));
         };
 
         let Some(root_path) = vcs.repository_root(current_directory).await else {
-            return Err(anyhow::anyhow!(format!("No repository of version control system '{tool}' found")));
+            return Err(anyhow::anyhow!(format!(
+                "No repository of version control system '{tool}' found"
+            )));
         };
 
         Ok((vcs, root_path))
     } else {
         tracing::debug!("Auto-detecting VCS");
-        auto_detect_vcs(current_directory).await.ok_or(anyhow::anyhow!("Could not auto-detect a supported version control system"))
+        auto_detect_vcs(current_directory)
+            .await
+            .ok_or(anyhow::anyhow!(
+                "Could not auto-detect a supported version control system"
+            ))
     }
 }
 
@@ -126,9 +134,7 @@ pub(crate) async fn find_changed_files(
         vcs.name()
     );
 
-    let files_to_process = vcs
-        .changed_files(&repo_path, &from_rev, &to_rev)
-        .await?;
+    let files_to_process = vcs.changed_files(&repo_path, &from_rev, &to_rev).await?;
 
     tracing::debug!("VCS returned the following files to process: {files_to_process:?}");
 

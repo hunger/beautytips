@@ -1,41 +1,41 @@
 [[actions]]
-name = "check_fmt"
+name = "check_rust_fmt"
 description = "Run cargo fmt in check mode"
 command = "cargo fmt --check -p {{cargo_targets}} -- --color=never"
 show-output = "never"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]
 
 [[actions]]
-name = "fix_fmt"
+name = "fix_rust_fmt"
 description = "Run cargo fmt in fix mode"
 command = "cargo fmt --all -p {{cargo_targets}} -- --color=never"
 show-output = "always"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]
 
 [[actions]]
-name = "check_clippy"
+name = "check_rust_clippy"
 description = "Run cargo clippy"
 command = "cargo clippy -p {{cargo_targets}} --color=never"
 show-output = "always"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]
 
 [[actions]]
-name = "fix_clippy"
+name = "fix_rust_clippy"
 description = "Run cargo clippy in fix mode"
 command = "cargo clippy --fix -p {{cargo_targets}} --allow-no-vcs --color=never"
 show-output = "always"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]
 
 [[actions]]
-name = "check_syntax"
+name = "check_rust_syntax"
 description = "Run cargo check"
 command = "cargo check -p {{cargo_targets}} --color=never"
 show-output = "failure"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]
 
 [[actions]]
-name = "check_tests"
+name = "check_rust_tests"
 description = "Run cargo test"
 command = "cargo test -p {{cargo_targets}} --color=never"
 show-output = "failure"
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
+inputs.files = ["**/*.rs", "**/Cargo.toml"]

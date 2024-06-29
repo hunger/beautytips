@@ -100,13 +100,15 @@ async fn collect_input_files_impl(
 
     let root_directory = tokio::fs::canonicalize(&context.root_directory)
         .await
-        .context(format!("Could not canonicalize '{:?}", context.root_directory))?;
+        .context(format!(
+            "Could not canonicalize '{:?}",
+            context.root_directory
+        ))?;
 
-    std::env::set_current_dir(&root_directory).
-        context(format!(
-                "Failed to set current directory to {:?}",
-                context.root_directory
-            ))?;
+    std::env::set_current_dir(&root_directory).context(format!(
+        "Failed to set current directory to {:?}",
+        context.root_directory
+    ))?;
 
     let mut canonical_files = Vec::new();
     for f in &context.files_to_process {

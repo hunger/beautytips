@@ -3,4 +3,4 @@ name = "check_actions"
 description = "Run actionlint on github actions"
 run-sequentially = false
 command = "actionlint {{files...}}"
-inputs.files = [ ".github/**/*.yaml", ".github/**/*.yml" ]
+inputs.files = [".github/**/*.yaml", ".github/**/*.yml"]
