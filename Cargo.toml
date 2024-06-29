@@ -21,9 +21,6 @@ path-guid = "EDC1F57B-2BD7-4634-AFBA-A158F86360D8"
 license = false
 eula = false
 
-[[bin]]
-name = "beautytips"
-
 [lints.clippy]
 cargo = "warn"
 multiple_crate_versions = { level = "allow", priority = 10 }
