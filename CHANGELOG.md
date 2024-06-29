@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+ * The rust related actions were renamed to include `rust_` after `check_` and
+   `fix_`
+ * Report "Not applicable" when any of the provided inputs yield no input files.
+   This used to be coupled to the inputs *used* in the command line arguments
+   only, but that is not always what I want to express.
+
+### Fixed
+
+ * `cargo_targets` detection
+
 ## [0.1.4] - 2024-06-29
 
 ### Added

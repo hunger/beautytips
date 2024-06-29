@@ -7,6 +7,8 @@ use std::{collections::HashMap, fmt::Display, path::Path};
 
 use anyhow::Context;
 
+use beautytips::InputFilters;
+
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
@@ -421,20 +423,10 @@ fn change_action(
     if let Some(exit_code) = &update.exit_code {
         ad.expected_exit_code = *exit_code;
     }
-    if let Some(inputs) = &update.inputs {
-        let mut inputs = map_input_filters(inputs)?;
-        for (k, v) in inputs.drain() {
-            if v.is_empty() {
-                if ad.input_filters.remove(&k).is_none() {
-                    return Err(anyhow::anyhow!(format!(
-                        "{k} does not exist when trying to remove it from inputs"
-                    )))
-                    .context(format!("While changing {qid}"));
-                }
-            } else {
-                ad.input_filters.insert(k, v);
-            }
-        }
+    if let Some(inputs) = update.inputs.take() {
+        ad.input_filters
+            .update_from(inputs)
+            .context(format!("While changing {qid}"))?;
     }
 
     let index = actions.len();
@@ -476,8 +468,8 @@ fn add_action(
     let command = map_command(command).context("Processing command of {qid}")?;
     let run_sequentially = std::mem::take(&mut update.run_sequentially).unwrap_or(true);
     let expected_exit_code = update.exit_code.unwrap_or(0);
-    let input_filters = if let Some(inputs) = &update.inputs {
-        map_input_filters(inputs)?
+    let input_filters = if let Some(inputs) = update.inputs.take() {
+        InputFilters::try_from(inputs)?
     } else {
         beautytips::InputFilters::default()
     };
@@ -560,31 +552,6 @@ fn map_command(toml_command: &str) -> anyhow::Result<Vec<String>> {
     }
 
     Ok(command)
-}
-
-fn map_input_filters(
-    toml_filters: &HashMap<String, Vec<String>>,
-) -> anyhow::Result<beautytips::InputFilters> {
-    toml_filters
-        .iter()
-        .try_fold(HashMap::new(), |mut acc, (k, v)| {
-            let entry = acc.entry(k.clone());
-            if matches!(entry, std::collections::hash_map::Entry::Occupied(_)) {
-                return Err(anyhow::anyhow!(format!(
-                    "Redefinition of input filters for '{k}'"
-                )));
-            }
-            let globs = v
-                .iter()
-                .map(|p| {
-                    glob::Pattern::new(p)
-                        .context(format!("Failed to parse glob pattern '{p}' for '{k}'"))
-                })
-                .collect::<Result<_, _>>()?;
-            entry.or_insert(globs);
-            Ok(acc)
-        })
-        .context("Parsing input filters for action '{id}'")
 }
 
 fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyhow::Result<()> {

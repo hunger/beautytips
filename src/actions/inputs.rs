@@ -1,11 +1,107 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
+use anyhow::Context;
 
 mod cargo;
 
-pub type InputFilters = HashMap<String, Vec<glob::Pattern>>;
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InputFilters(HashMap<String, Vec<glob::Pattern>>);
+
+impl From<HashMap<String, Vec<glob::Pattern>>> for InputFilters {
+    fn from(value: HashMap<String, Vec<glob::Pattern>>) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<HashMap<String, Vec<String>>> for InputFilters {
+    type Error = anyhow::Error;
+
+    fn try_from(value: HashMap<String, Vec<String>>) -> Result<Self, Self::Error> {
+        let inner = value
+            .iter()
+            .try_fold(HashMap::new(), |mut acc, (k, v)| {
+                let entry = acc.entry(k.clone());
+                if matches!(entry, std::collections::hash_map::Entry::Occupied(_)) {
+                    return Err(anyhow::anyhow!(format!(
+                        "Redefinition of input filters for '{k}'"
+                    )));
+                }
+                let globs = v
+                    .iter()
+                    .map(|p| {
+                        glob::Pattern::new(p)
+                            .context(format!("Failed to parse glob pattern '{p}' for '{k}'"))
+                    })
+                    .collect::<Result<_, _>>()?;
+                entry.or_insert(globs);
+                Ok(acc)
+            })
+            .context("Parsing input filters for action '{id}'")?;
+
+        Ok(Self(inner))
+    }
+}
+
+impl InputFilters {
+    pub(crate) async fn filtered(
+        &self,
+        input_name: &str,
+        inputs: &InputQuery,
+        root_directory: &Path,
+    ) -> crate::SendableResult<Vec<PathBuf>> {
+        static EMPTY: Vec<glob::Pattern> = vec![];
+
+        let current_filters = self.0.get(input_name).unwrap_or(&EMPTY);
+        let match_options = {
+            let mut opt = glob::MatchOptions::new();
+            opt.require_literal_separator = true;
+            opt
+        };
+
+        Ok(inputs
+            .inputs(input_name.to_string())
+            .await
+            .map_err(|e| format!("Failed to get inputs for {input_name:?}: {e}"))?
+            .into_iter()
+            .filter(|p| {
+                let rel_path = p.strip_prefix(root_directory).unwrap_or(p);
+                current_filters.is_empty()
+                    || current_filters
+                        .iter()
+                        .any(|f| f.matches_path_with(rel_path, match_options))
+            })
+            .collect())
+    }
+
+    pub fn inputs(&self) -> impl Iterator<Item = &String> {
+        self.0.keys()
+    }
+
+    /// # Errors
+    ///
+    /// Errors out when trying to remove some input that does not exist
+    pub fn update_from(&mut self, value: HashMap<String, Vec<String>>) -> crate::Result<()> {
+        let mut inputs = InputFilters::try_from(value)?;
+        for (k, v) in inputs.0.drain() {
+            if v.is_empty() {
+                if self.0.remove(&k).is_none() {
+                    return Err(anyhow::anyhow!(format!(
+                        "{k} does not exist when trying to remove it from inputs"
+                    )));
+                }
+            } else {
+                self.0.insert(k, v);
+            }
+        }
+        Ok(())
+    }
+}
 
 pub(crate) struct InputQueryMessage {
     input: String,
@@ -73,6 +169,7 @@ type InputQueryReplyTx = tokio::sync::oneshot::Sender<InputQueryReplyMessage>;
 type InputGeneratorReplyTx = tokio::sync::mpsc::Sender<GeneratorReply>;
 type InputGeneratorReplyRx = tokio::sync::mpsc::Receiver<GeneratorReply>;
 
+#[derive(Debug)]
 enum InputMapEntry {
     Cached(InputQueryReplyMessage),
     Generating(Vec<InputQueryReplyTx>),
@@ -120,7 +217,10 @@ impl InputCache {
     }
 
     #[tracing::instrument(skip(self, query))]
-    fn handle_input_query(&mut self, query: Option<InputQueryMessage>) -> crate::SendableResult<bool> {
+    fn handle_input_query(
+        &mut self,
+        query: Option<InputQueryMessage>,
+    ) -> crate::SendableResult<bool> {
         let Some(query) = query else {
             return Ok(false);
         };
@@ -132,7 +232,9 @@ impl InputCache {
                     .send(data.clone())
                     .expect("Failed to send internal message");
             }
-            Some(InputMapEntry::Generating(data)) => data.push(sender),
+            Some(InputMapEntry::Generating(data)) => {
+                data.push(sender);
+            }
             None => {
                 let generator_tx = self.generator_channel.0.clone();
                 let query_name = query.input.clone();
@@ -187,7 +289,10 @@ impl InputCache {
     }
 
     #[tracing::instrument(skip(self))]
-    fn handle_generator_reply(&mut self, reply: Option<GeneratorReply>) -> crate::SendableResult<bool> {
+    fn handle_generator_reply(
+        &mut self,
+        reply: Option<GeneratorReply>,
+    ) -> crate::SendableResult<bool> {
         let Some(reply) = reply else {
             return Ok(true);
         };

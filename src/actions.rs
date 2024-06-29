@@ -5,7 +5,7 @@ use anyhow::Context;
 
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -119,6 +119,24 @@ async fn report(sender: &ActionUpdateSender, message: ActionUpdate) {
         .expect("Failed to send message to reporter");
 }
 
+pub(crate) async fn has_unfiltered_input(
+    inputs: &inputs::InputQuery,
+    input_filters: &inputs::InputFilters,
+    root_directory: &Path,
+) -> bool {
+    for k in input_filters.inputs() {
+        if input_filters
+            .filtered(k, inputs, root_directory)
+            .await
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+        {
+            return false;
+        }
+    }
+    true
+}
+
 #[tracing::instrument(skip(inputs))]
 async fn run_single_action(
     current_directory: PathBuf,
@@ -128,15 +146,26 @@ async fn run_single_action(
     inputs: inputs::InputQuery,
 ) -> crate::Result<()> {
     tracing::debug!("running action '{}': {:?}", action.id, action.command);
+    let action_id = format!("{}/{}", action.source, action.id);
 
     sender
         .send(ActionUpdate::Started {
-            action_id: action.id.clone(),
+            action_id: action_id.clone(),
         })
         .await
         .expect("Failed to send start message to reporter");
 
-    let action_id = format!("{}/{}", action.source, action.id);
+    if !has_unfiltered_input(&inputs, &action.input_filters, &current_directory).await {
+        sender
+            .send(ActionUpdate::Done {
+                action_id: action_id.clone(),
+                result: ActionResult::NotApplicable,
+            })
+            .await
+            .expect("Failed to send message to reporter");
+        return Ok(());
+    }
+
     if std::env::var("SKIP")
         .unwrap_or_default()
         .split(',')
@@ -166,7 +195,7 @@ async fn run_single_action(
             })
             .await
             .expect("Failed to send message to reporter");
-        return Err(anyhow::anyhow!(format!("Invalid configurtion: {message}")));
+        return Err(anyhow::anyhow!(format!("Invalid configuration: {message}")));
     };
 
     let args = args::parse_args(
@@ -178,17 +207,7 @@ async fn run_single_action(
     .await;
 
     let mut args = match args {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            sender
-                .send(ActionUpdate::Done {
-                    action_id: action_id.clone(),
-                    result: ActionResult::NotApplicable,
-                })
-                .await
-                .expect("Failed to send message to reporter");
-            return Ok(());
-        }
+        Ok(args) => args,
         Err(e) => {
             sender
                 .send(ActionUpdate::Done {

@@ -149,8 +149,6 @@ async fn input_arg(
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
 ) -> crate::SendableResult<Option<(Vec<PathBuf>, bool)>> {
-    static EMPTY: Vec<glob::Pattern> = vec![];
-
     if arg.starts_with("{{") && arg.ends_with("}}") {
         let input_name = &arg[2..(arg.len() - 2)];
         let (input_name, is_array) = if input_name.ends_with("...") {
@@ -159,29 +157,9 @@ async fn input_arg(
             (input_name, false)
         };
 
-        let current_filters = input_filters.get(input_name).unwrap_or(&EMPTY);
-        let match_options = {
-            let mut opt = glob::MatchOptions::new();
-            opt.require_literal_separator = true;
-            opt
-        };
-
-        let paths = inputs
-            .inputs(input_name.to_string())
-            .await
-            .map_err(|e| format!("Failed to get inputs for {input_name:?}: {e}"))?
-            .into_iter()
-            .filter(|p| {
-                let Ok(rel_path) = p.strip_prefix(root_directory) else {
-                    return false;
-                };
-                current_filters.is_empty()
-                    || current_filters
-                        .iter()
-                        .any(|f| f.matches_path_with(rel_path, match_options.clone()))
-            })
-            .collect();
-
+        let paths = input_filters
+            .filtered(input_name, &inputs, root_directory)
+            .await?;
         Ok(Some((paths, is_array)))
     } else {
         Ok(None)
@@ -194,7 +172,7 @@ pub(crate) async fn parse_arg(
     inputs: inputs::InputQuery,
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
-) -> crate::SendableResult<Option<Vec<Arg>>> {
+) -> crate::SendableResult<Vec<Arg>> {
     let argument_parts = split_arg(arg);
 
     let mut result = Vec::new();
@@ -204,17 +182,13 @@ pub(crate) async fn parse_arg(
         if let Some((paths, is_array)) =
             input_arg(arg, inputs, root_directory, input_filters).await?
         {
-            if paths.is_empty() {
-                return Ok(None);
-            }
-
             if is_array {
                 result.extend(
                     paths
                         .iter()
                         .map(|p| Arg::new(vec![p.clone().into_os_string()])),
                 );
-            } else {
+            } else if !paths.is_empty() {
                 result.push(Arg::new(
                     paths.iter().map(|p| p.clone().into_os_string()).collect(),
                 ));
@@ -229,10 +203,6 @@ pub(crate) async fn parse_arg(
             if let Some((paths, is_array)) =
                 input_arg(p, inputs.clone(), root_directory, input_filters).await?
             {
-                if paths.is_empty() {
-                    return Ok(None);
-                }
-
                 if is_array {
                     let total = paths
                         .iter()
@@ -264,7 +234,7 @@ pub(crate) async fn parse_arg(
         result.push(Arg::new(extended_arg.iter().map(Into::into).collect()));
     }
 
-    Ok(Some(result))
+    Ok(result)
 }
 
 #[tracing::instrument(skip(inputs))]
@@ -273,19 +243,15 @@ pub(crate) async fn parse_args(
     inputs: inputs::InputQuery,
     root_directory: &Path,
     input_filters: &inputs::InputFilters,
-) -> crate::SendableResult<Option<Args>> {
+) -> crate::SendableResult<Args> {
     let mut parsed_args = Vec::with_capacity(args.len() - 1);
 
     for a in args.iter().skip(1) {
         let filtered_args = parse_arg(a, inputs.clone(), root_directory, input_filters).await?;
-        if let Some(filtered_args) = filtered_args {
-            parsed_args.extend_from_slice(&filtered_args);
-        } else {
-            return Ok(None);
-        }
+        parsed_args.extend_from_slice(&filtered_args);
     }
 
-    Ok(Some(Args(parsed_args)))
+    Ok(Args(parsed_args))
 }
 
 #[cfg(test)]
@@ -326,8 +292,7 @@ mod tests {
 
     const PATH_0: &str = const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "README.md");
     const PATH_1: &str = const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "main.rs");
-    const PATH_2: &str =
-        const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "Cargo.toml");
+    const PATH_2: &str = const_format::concatcp!(ROOT_DIR, std::path::MAIN_SEPARATOR, "Cargo.toml");
     const PATH_3: &str = const_format::concatcp!(
         ROOT_DIR,
         std::path::MAIN_SEPARATOR,
@@ -360,18 +325,17 @@ mod tests {
             ],
         );
 
-        let filter = HashMap::from([(
+        let filter = crate::InputFilters::from(HashMap::from([(
             "files".to_string(),
             filters
                 .iter()
                 .map(|f| glob::Pattern::new(f).unwrap())
                 .collect(),
-        )]);
+        )]));
 
         let root_directory = PathBuf::from(ROOT_DIR);
 
-        let result = input_arg(arg, input_cache.query(), &root_directory, &filter).await;
-        result
+        input_arg(arg, input_cache.query(), &root_directory, &filter).await
     }
 
     #[tokio::test]
@@ -385,7 +349,7 @@ mod tests {
     async fn test_input_arg_files() {
         let (paths, is_array) = test_input_arg("{{files}}", &[]).await.unwrap().unwrap();
 
-        assert_eq!(is_array, false);
+        assert!(!is_array);
         assert_eq!(paths.len(), 5);
         assert_eq!(paths[0].to_string_lossy(), PATH_0);
         assert_eq!(paths[1].to_string_lossy(), PATH_1);
@@ -398,7 +362,7 @@ mod tests {
     async fn test_input_arg_files_dotdotdot() {
         let (paths, is_array) = test_input_arg("{{files...}}", &[]).await.unwrap().unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 5);
         assert_eq!(paths[0].to_string_lossy(), PATH_0);
         assert_eq!(paths[1].to_string_lossy(), PATH_1);
@@ -414,7 +378,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 3);
         assert_eq!(paths[0].to_string_lossy(), PATH_0);
         assert_eq!(paths[1].to_string_lossy(), PATH_3);
@@ -428,7 +392,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].to_string_lossy(), PATH_0);
     }
@@ -440,7 +404,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].to_string_lossy(), PATH_3);
     }
@@ -452,7 +416,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 2);
         assert_eq!(paths[0].to_string_lossy(), PATH_3);
         assert_eq!(paths[1].to_string_lossy(), PATH_4);
@@ -466,7 +430,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-        assert_eq!(is_array, true);
+        assert!(is_array);
         assert_eq!(paths.len(), 0);
     }
 }
