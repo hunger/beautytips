@@ -233,7 +233,7 @@ async fn run_single_action(
             .envs(extra_environment.iter())
             .output()
             .await
-            .context(format!("Could not start '{command}"))?;
+            .context(format!("Could not start '{command}'"))?;
 
         tracing::trace!(
             "result of running action '{}' ({} {}): {output:?}",

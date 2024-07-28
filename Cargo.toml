@@ -35,7 +35,7 @@ anyhow = { version = "1.0.86" }
 async-trait = { version = "0.1.80" }
 cargo_toml = { version = "0.20.3" }
 clap = { version = "4.5.8", features = ["cargo", "env", "derive"] }
-crossterm = { version = "0.27.0", default-features = false, features = [
+crossterm = { version = "0.28.1", default-features = false, features = [
   "windows",
 ] }
 dirs = { version = "5.0.1" }
@@ -74,7 +74,13 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "x86_64-pc-windows-msvc",
+]
 # Publish jobs to run in CI
 pr-run-mode = "plan"
 # Whether to install an updater program
