@@ -35,7 +35,7 @@ anyhow = { version = "1.0.86" }
 async-trait = { version = "0.1.80" }
 cargo_toml = { version = "0.20.3" }
 clap = { version = "4.5.8", features = ["cargo", "env", "derive"] }
-crossterm = { version = "0.27.0", default-features = false, features = [
+crossterm = { version = "0.28.1", default-features = false, features = [
   "windows",
 ] }
 dirs = { version = "5.0.1" }
