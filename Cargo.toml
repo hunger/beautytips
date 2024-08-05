@@ -53,7 +53,7 @@ tokio = { version = "1.38.0", features = [
   "time",
   "fs",
 ] }
-toml = { version = "0.8.14", features = ["preserve_order"] }
+toml = { version = "0.8.19", features = ["preserve_order"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
