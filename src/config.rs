@@ -33,16 +33,6 @@ impl ActionId {
             Err(anyhow::anyhow!("{input} is not a valid action id"))
         }
     }
-
-    /// Create a new `ActionId`
-    ///
-    /// # Errors
-    ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn new_str(input: &str) -> crate::Result<Self> {
-        Self::new(input.to_string())
-    }
 }
 
 impl Display for ActionId {
@@ -55,7 +45,7 @@ impl TryFrom<&str> for ActionId {
     type Error = anyhow::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new_str(value)
+        Self::new(value.to_string())
     }
 }
 
@@ -71,7 +61,7 @@ impl std::str::FromStr for ActionId {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new_str(s)
+        Self::new(s.to_string())
     }
 }
 
@@ -93,16 +83,6 @@ impl ActionSource {
             Err(anyhow::anyhow!("{input} is not a valid action source"))
         }
     }
-
-    /// Create a new `ActionSource`
-    ///
-    /// # Errors
-    ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn new_str(input: &str) -> crate::Result<Self> {
-        Self::new(input.to_string())
-    }
 }
 
 impl Display for ActionSource {
@@ -115,7 +95,7 @@ impl TryFrom<&str> for ActionSource {
     type Error = anyhow::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new_str(value)
+        Self::new(value.to_string())
     }
 }
 
@@ -131,7 +111,7 @@ impl std::str::FromStr for ActionSource {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new_str(s)
+        Self::new(s.to_string())
     }
 }
 
@@ -162,8 +142,8 @@ impl QualifiedActionId {
     /// but lowercase ASCII letters or '_'.
     pub fn parse(input: String) -> anyhow::Result<Self> {
         if let Some(separator) = input.find('/') {
-            let source = ActionSource::new_str(&input[..separator])?;
-            let id = ActionId::new_str(&input[separator + 1..])?;
+            let source = input[..separator].try_into()?;
+            let id = input[separator + 1..].try_into()?;
             Ok(Self::new_from_source(id, source))
         } else {
             let id = ActionId::new(input).context("Failed to parse qualified action id")?;
@@ -521,7 +501,7 @@ fn add_new_action_groups(
             .actions
             .iter()
             .map(|id| {
-                if id.source == Some(ActionSource::new_str("this").unwrap()) {
+                if id.source == "this".try_into().ok() {
                     QualifiedActionId::new_from_source(id.id.clone(), other.source.clone())
                 } else {
                     id.clone()
@@ -639,12 +619,14 @@ impl Configuration {
 macro_rules! import_rules {
     ( $( $file: tt ),* ) => {{
         {
+            use std::convert::TryFrom;
+
             let config = Configuration::default();
             $(
                 let config = config.merge(
                     ConfigurationSource::from_string(
                         include_str!(std::concat!($file, ".toml")),
-                        ActionSource::new_str($file).expect(std::concat!($file, " is a valid action id"))
+                        ActionSource::try_from($file).expect(std::concat!($file, " is a valid action id"))
                     ).expect(std::concat!($file, " should parse fine"))
                 )
                 .expect(std::concat!($file, " merge ok"));
@@ -670,13 +652,10 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         return Ok(base);
     }
 
-    let user = ConfigurationSource::from_path(
-        config_file.as_path(),
-        ActionSource::new_str("user").unwrap(),
-    )
-    .context(format!(
-        "Failed to parse configuration file {config_file:?}"
-    ))?;
+    let user = ConfigurationSource::from_path(config_file.as_path(), "user".try_into().unwrap())
+        .context(format!(
+            "Failed to parse configuration file {config_file:?}"
+        ))?;
     base.merge(user)
 }
 
@@ -712,36 +691,42 @@ name = "test"
 actions = [ "test_1", "test_2" ]
 "#;
 
-        let base =
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+            .unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
         assert_eq!(base.actions.len(), 2);
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
-                .unwrap()
-                .count(),
+            base.actions(&[QualifiedActionId::new(
+                ActionId::try_from("test_1").unwrap()
+            )])
+            .unwrap()
+            .count(),
             1
         );
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(ActionId::new_str("test_2").unwrap())])
-                .unwrap()
-                .count(),
+            base.actions(&[QualifiedActionId::new(
+                ActionId::try_from("test_2").unwrap()
+            )])
+            .unwrap()
+            .count(),
             1
         );
         assert!(base
-            .actions(&[QualifiedActionId::new(ActionId::new_str("test_3").unwrap())])
+            .actions(&[QualifiedActionId::new(
+                ActionId::try_from("test_3").unwrap()
+            )])
             .is_err());
         assert_eq!(base.action_groups.len(), 2);
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
+            base.actions(&[QualifiedActionId::new(ActionId::try_from("test").unwrap())])
                 .unwrap()
                 .count(),
             2
         );
         assert_eq!(
             base.actions(&[QualifiedActionId::new(
-                ActionId::new_str("test_all").unwrap()
+                ActionId::try_from("test_all").unwrap()
             )])
             .unwrap()
             .count(),
@@ -753,8 +738,8 @@ actions = [ "test_1", "test_2" ]
     fn test_configuration_from_str_empty_ok() {
         let base = "";
 
-        let base =
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+            .unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
         assert_eq!(base.actions.len(), 0);
@@ -769,7 +754,8 @@ command = "foobar x y z"
 "#;
 
         assert!(
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+                .is_err()
         );
     }
 
@@ -792,7 +778,8 @@ actions = [ "test1", "test2" ]
 "#;
 
         assert!(
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+                .is_err()
         );
     }
 
@@ -815,7 +802,8 @@ actions = [ "test1", "test2" ]
 "#;
 
         assert!(
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+                .is_err()
         );
     }
 
@@ -837,7 +825,8 @@ actions = [ "test1", "test2" ]
 "#;
 
         assert!(
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).is_err()
+            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+                .is_err()
         );
     }
 
@@ -858,8 +847,8 @@ name = "test"
 actions = [ "test1", "test2" ]
 "#;
 
-        let base =
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+            .unwrap();
         assert!(Configuration::default().merge(base).is_err());
     }
 
@@ -887,22 +876,15 @@ name = "test"
 actions = [ "test_1", "test_2" ]
 "#;
 
-        let base =
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+            .unwrap();
         let merge = Configuration::default().merge(base).unwrap();
 
         assert_eq!(merge.actions.len(), 3);
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
-                .unwrap()
-                .count(),
-            1
-        );
-        assert_eq!(
-            merge
                 .actions(&[QualifiedActionId::new(
-                    ActionId::new_str("test_3b").unwrap()
+                    ActionId::try_from("test_1").unwrap()
                 )])
                 .unwrap()
                 .count(),
@@ -910,14 +892,25 @@ actions = [ "test_1", "test_2" ]
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(ActionId::new_str("test_2").unwrap())])
+                .actions(&[QualifiedActionId::new(
+                    ActionId::try_from("test_3b").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::try_from("test_2").unwrap()
+                )])
                 .unwrap()
                 .count(),
             1
         );
         assert_eq!(merge.action_groups.len(), 2);
         // let it = merge
-        //     .named_actions(&[QualifiedActionId::new(ActionId::new_str("test").unwrap())])
+        //     .named_actions(&[QualifiedActionId::new(ActionId::try_from("test").unwrap())])
         //     .unwrap();
         // assert_eq!(it.count(), 2);
     }
@@ -946,8 +939,8 @@ name = "test"
 actions = [ "test_1", "test_2" ]
 "#;
 
-        let base =
-            ConfigurationSource::from_string(base, ActionSource::new_str("test").unwrap()).unwrap();
+        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
+            .unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
         let other = r#"[[actions]]
@@ -974,7 +967,7 @@ name = "test_group"
 actions = [ "test_3b" ]
 "#;
         let other =
-            ConfigurationSource::from_string(other, ActionSource::new_str("test2").unwrap())
+            ConfigurationSource::from_string(other, ActionSource::try_from("test2").unwrap())
                 .unwrap();
 
         let merge = base.merge(other).unwrap();
@@ -982,15 +975,8 @@ actions = [ "test_3b" ]
         assert_eq!(merge.actions.len(), 6);
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(ActionId::new_str("test_1").unwrap())])
-                .unwrap()
-                .count(),
-            1
-        );
-        assert_eq!(
-            merge
                 .actions(&[QualifiedActionId::new(
-                    ActionId::new_str("test_3b").unwrap()
+                    ActionId::try_from("test_1").unwrap()
                 )])
                 .unwrap()
                 .count(),
@@ -999,7 +985,7 @@ actions = [ "test_3b" ]
         assert_eq!(
             merge
                 .actions(&[QualifiedActionId::new(
-                    ActionId::new_str("test_3o").unwrap()
+                    ActionId::try_from("test_3b").unwrap()
                 )])
                 .unwrap()
                 .count(),
@@ -1008,7 +994,16 @@ actions = [ "test_3b" ]
         assert_eq!(
             merge
                 .actions(&[QualifiedActionId::new(
-                    ActionId::new_str("test_group").unwrap()
+                    ActionId::try_from("test_3o").unwrap()
+                )])
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(
+            merge
+                .actions(&[QualifiedActionId::new(
+                    ActionId::try_from("test_group").unwrap()
                 )])
                 .unwrap()
                 .count(),
