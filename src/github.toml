@@ -1,5 +1,5 @@
 [[actions]]
-name = "check_actions"
+name = "github/check_actions"
 description = "Run actionlint on github actions"
 run-sequentially = false
 command = "actionlint {{files...}}"

@@ -4,7 +4,7 @@
 use anyhow::Context;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -23,7 +23,6 @@ pub enum OutputCondition {
 #[derive(Clone, Debug, Eq)]
 pub struct ActionDefinition {
     pub id: String,
-    pub source: String,
     pub description: String,
     pub run_sequentially: bool,
     pub command: Vec<String>,
@@ -40,40 +39,27 @@ impl PartialOrd for ActionDefinition {
 
 impl PartialEq for ActionDefinition {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id) && self.source.eq(&other.source)
+        self.id.eq(&other.id)
     }
 }
 
 impl Ord for ActionDefinition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let cmp = self.id.cmp(&other.id);
-        if cmp == std::cmp::Ordering::Equal {
-            self.source.cmp(&other.source)
-        } else {
-            cmp
-        }
+        self.id.cmp(&other.id)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct ActionDefinitionIterator<'a> {
-    actions: &'a [ActionDefinition],
-    indices: Vec<usize>,
+    actions: Vec<&'a ActionDefinition>,
     current_item: usize,
 }
 
 impl<'a> ActionDefinitionIterator<'a> {
     #[must_use]
-    pub fn new(actions: &'a [ActionDefinition], indices: HashSet<usize>) -> Self {
-        let indices = {
-            let mut i: Vec<usize> = Vec::from_iter(indices);
-            i.sort_unstable();
-            i
-        };
-
+    pub fn new(actions: Vec<&'a ActionDefinition>) -> Self {
         Self {
             actions,
-            indices,
             current_item: 0,
         }
     }
@@ -85,7 +71,7 @@ impl<'a> Iterator for ActionDefinitionIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let cur = self.current_item;
         self.current_item += 1;
-        self.indices.get(cur).and_then(|i| self.actions.get(*i))
+        self.actions.get(cur).copied()
     }
 }
 
@@ -146,7 +132,7 @@ async fn run_single_action(
     inputs: inputs::InputQuery,
 ) -> crate::Result<()> {
     tracing::debug!("running action '{}': {:?}", action.id, action.command);
-    let action_id = format!("{}/{}", action.source, action.id);
+    let action_id = format!("{}", action.id);
 
     sender
         .send(ActionUpdate::Started {

@@ -1,37 +1,104 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
-use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::{collections::HashMap, fmt::Display, path::Path};
+use std::collections::hash_set::Iter;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{convert::TryFrom, fmt::Display, path::Path};
 
 use anyhow::Context;
 
 use beautytips::InputFilters;
 
+fn is_valid_id(id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+
+    let mut first_part_valid = false;
+    let mut had_separator = false;
+    let mut second_part_valid = false;
+
+    for c in id.chars() {
+        match c {
+            '/' => {
+                if had_separator || !first_part_valid {
+                    return false;
+                }
+                had_separator = true;
+            }
+            '_' => { /* do nothing */ }
+            c if c.is_ascii_digit() => { /* do nothing */ }
+            c if c.is_ascii_lowercase() => {
+                if had_separator {
+                    second_part_valid = true;
+                } else {
+                    first_part_valid = true;
+                }
+            }
+            _ => return false,
+        }
+    }
+
+    second_part_valid
+}
+
+fn find_selectors(action_groups: &ActionGroups, selectors: &ActionSelectors) -> ActionSelectors {
+    let mut result = ActionSelectors::default();
+    let mut next_result = selectors.clone();
+
+    while next_result.len() != result.len() {
+        result.0.extend(next_result.0.iter().cloned());
+        for (n, group_selectors) in action_groups {
+            for s in result.0.iter() {
+                if s.matches(n) {
+                    next_result.extend(group_selectors.clone());
+                }
+            }
+        }
+    }
+
+    next_result
+}
+
+fn find_actions<'a>(
+    actions: &'a ActionMap,
+    selectors: &ActionSelectors,
+) -> Vec<&'a beautytips::ActionDefinition> {
+    actions
+        .iter()
+        .filter_map(move |(_, ad)| {
+            selectors
+                .0
+                .iter()
+                .find_map(|s| s.matches(&ad.id).then_some(ad))
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
-
-fn is_valid_id(id: &str) -> bool {
-    !(id.chars()
-        .any(|c| !c.is_ascii_lowercase() && c != '_' && !c.is_ascii_digit()))
-        && !id.is_empty()
-}
 
 impl ActionId {
     /// Create a new `ActionId`
     ///
     /// # Errors
     ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
+    /// Complain when the `input` is not a valid Action Id
     pub fn new(input: String) -> anyhow::Result<Self> {
         if is_valid_id(&input) {
             Ok(Self(input))
         } else {
             Err(anyhow::anyhow!("{input} is not a valid action id"))
         }
+    }
+}
+
+impl std::ops::Deref for ActionId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_str()
     }
 }
 
@@ -66,140 +133,125 @@ impl std::str::FromStr for ActionId {
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
-#[serde(try_from = "String", expecting = "an action id")]
-pub struct ActionSource(String);
+#[serde(try_from = "String", expecting = "an action id selector")]
+pub struct ActionSelector(glob::Pattern);
 
-impl ActionSource {
-    /// Create a new `ActionSource`
+impl ActionSelector {
+    /// Create a new `ActionId`
     ///
     /// # Errors
     ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn new(input: String) -> anyhow::Result<Self> {
-        if is_valid_id(&input) {
-            Ok(Self(input))
+    /// Complain if the selector is not valid
+    pub fn new(input: &str) -> anyhow::Result<Self> {
+        let pattern = if input.contains('/') {
+            glob::Pattern::new(input).context("Failed to parse action selector")?
         } else {
-            Err(anyhow::anyhow!("{input} is not a valid action source"))
-        }
+            glob::Pattern::new(&format!("*/{input}")).context("Failed to parse action selector")?
+        };
+
+        Ok(Self(pattern))
+    }
+
+    pub fn matches(&self, input: &str) -> bool {
+        self.0.matches_with(
+            input,
+            glob::MatchOptions {
+                case_sensitive: true,
+                require_literal_separator: true,
+                require_literal_leading_dot: false,
+            },
+        )
     }
 }
 
-impl Display for ActionSource {
+impl Display for ActionSelector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl TryFrom<&str> for ActionSource {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_string())
-    }
-}
-
-impl TryFrom<String> for ActionSource {
+impl TryFrom<String> for ActionSelector {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(&value)
+    }
+}
+
+impl TryFrom<&str> for ActionSelector {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::new(value)
     }
 }
 
-impl std::str::FromStr for ActionSource {
+impl std::str::FromStr for ActionSelector {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new(s.to_string())
+        Self::new(s)
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize)]
-#[serde(try_from = "String", expecting = "an action id")]
-pub struct QualifiedActionId {
-    source: Option<ActionSource>,
-    id: ActionId,
-}
+#[derive(Clone, Debug, Default)]
+pub struct ActionSelectors(HashSet<ActionSelector>);
 
-impl QualifiedActionId {
-    pub fn new_from_source(id: ActionId, source: ActionSource) -> Self {
-        Self {
-            id,
-            source: Some(source),
-        }
-    }
-
-    pub fn new(id: ActionId) -> Self {
-        Self { id, source: None }
-    }
-
-    /// Create a new `QualifiedActionId`
+impl ActionSelectors {
+    /// Create a new `ActionId`
     ///
     /// # Errors
     ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn parse(input: String) -> anyhow::Result<Self> {
-        if let Some(separator) = input.find('/') {
-            let source = input[..separator].try_into()?;
-            let id = input[separator + 1..].try_into()?;
-            Ok(Self::new_from_source(id, source))
-        } else {
-            let id = ActionId::new(input).context("Failed to parse qualified action id")?;
-            Ok(Self::new(id))
-        }
+    /// Complain if the selector is not valid
+    pub fn new<const N: usize>(input: [&str; N]) -> anyhow::Result<Self> {
+        Ok(Self(
+            input
+                .iter()
+                .map(|s| ActionSelector::new(s))
+                .collect::<anyhow::Result<_>>()?,
+        ))
     }
 
-    /// Create a new `QualifiedActionId`
-    ///
-    /// # Errors
-    ///
-    /// Raise an invalid configuration error if the action id contains anything
-    /// but lowercase ASCII letters or '_'.
-    pub fn parse_str(input: &str) -> crate::Result<Self> {
-        Self::parse(input.to_string())
+    pub fn matches(&self, input: &str) -> bool {
+        self.0.iter().any(|s| s.matches(input))
     }
-}
 
-impl Display for QualifiedActionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(s) = &self.source {
-            write!(f, "{s}/{}", self.id)
-        } else {
-            write!(f, "{}", self.id)
-        }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn contains(&self, needle: &ActionSelector) -> bool {
+        self.0.contains(needle)
     }
 }
 
-impl TryFrom<&str> for QualifiedActionId {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::parse_str(value)
+impl From<Vec<ActionSelector>> for ActionSelectors {
+    fn from(input: Vec<ActionSelector>) -> ActionSelectors {
+        ActionSelectors(input.into_iter().collect())
     }
 }
 
-impl TryFrom<String> for QualifiedActionId {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::parse(value)
+impl std::iter::Extend<ActionSelector> for ActionSelectors {
+    #[inline]
+    fn extend<I: IntoIterator<Item = ActionSelector>>(&mut self, iter: I) {
+        self.0.extend(iter);
     }
 }
 
-impl std::str::FromStr for QualifiedActionId {
-    type Err = anyhow::Error;
+impl<'a> IntoIterator for &'a ActionSelectors {
+    type Item = &'a ActionSelector;
+    type IntoIter = Iter<'a, ActionSelector>;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse_str(s)
+    #[inline]
+    fn into_iter(self) -> Iter<'a, ActionSelector> {
+        self.0.iter()
     }
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MergeAction {
-    Hide,
+    Remove,
     Change,
     #[default]
     Add,
@@ -235,14 +287,14 @@ pub struct TomlActionDefinition {
     pub inputs: Option<HashMap<String, Vec<String>>>,
 }
 
-type ActionGroups = HashMap<QualifiedActionId, Vec<QualifiedActionId>>;
-type ActionMap = HashMap<QualifiedActionId, usize>;
+type ActionGroups = HashMap<ActionId, Vec<ActionSelector>>;
+type ActionMap = BTreeMap<ActionId, beautytips::ActionDefinition>;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TomlActionGroup {
     pub name: ActionId,
-    pub actions: Vec<QualifiedActionId>,
+    pub actions: Vec<ActionSelector>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -257,69 +309,39 @@ struct TomlConfiguration {
 #[derive(Clone, Debug, Default)]
 pub struct Configuration {
     pub action_groups: ActionGroups,
-    pub actions: Vec<beautytips::ActionDefinition>,
     pub action_map: ActionMap,
 }
 
 #[derive(Debug)]
 pub struct ConfigurationSource {
-    pub source: ActionSource,
     pub action_groups: Vec<TomlActionGroup>,
     pub actions: Vec<TomlActionDefinition>,
 }
 
 impl ConfigurationSource {
-    fn from_string(value: &str, source: ActionSource) -> anyhow::Result<Self> {
+    fn from_string(value: &str) -> anyhow::Result<Self> {
         let mut toml_config: TomlConfiguration =
             toml::from_str(value).context("Failed to parse toml")?;
 
         let actions = std::mem::take(&mut toml_config.actions);
-
-        {
-            let mut known_names = HashSet::new();
-
-            for d in &actions {
-                if !known_names.insert(d.name.clone()) {
-                    return Err(anyhow::anyhow!(format!(
-                        "Duplicate action \'{}\' found",
-                        d.name
-                    )));
-                }
-            }
-        }
-
         let action_groups = std::mem::take(&mut toml_config.action_groups);
 
-        {
-            let mut known_names = HashSet::new();
-
-            for d in &action_groups {
-                if !known_names.insert(d.name.clone()) {
-                    return Err(anyhow::anyhow!(format!(
-                        "Duplicate action group \'{}\' found",
-                        d.name
-                    )));
-                }
-            }
-        }
-
         Ok(Self {
-            source,
             action_groups,
             actions,
         })
     }
 
-    fn from_path(path: &Path, source_name: ActionSource) -> anyhow::Result<Self> {
+    fn from_path(path: &Path) -> anyhow::Result<Self> {
         let config_data =
             std::fs::read_to_string(path).context(format!("Failed to read toml file {path:?}"))?;
 
-        Self::from_string(config_data.as_str(), source_name).context("Failed to parse toml string")
+        Self::from_string(config_data.as_str()).context("Failed to parse toml string")
     }
 }
 
-fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
-    let qid = QualifiedActionId::new(action.name.clone());
+fn remove_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
+    let id = action.name.clone();
     if action.description.is_some()
         || action.show_output.is_some()
         || action.run_sequentially.is_some()
@@ -328,12 +350,13 @@ fn hide_action(action: &TomlActionDefinition, action_map: &mut ActionMap) -> any
         || action.inputs.is_some()
     {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is hiding an existing action, but has extra keys set"
+            "{id} is removing an action, but has extra keys set"
         )));
     }
-    if action_map.insert(qid.clone(), usize::MAX).is_none() {
+
+    if action_map.remove(&id).is_none() {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is hiding an action that does not exist"
+            "{id} is removing an action that did not exist"
         )));
     }
 
@@ -351,12 +374,9 @@ fn match_output_condition(output: &OutputCondition) -> beautytips::OutputConditi
 
 fn change_action(
     update: &mut TomlActionDefinition,
-    source: &ActionSource,
-    actions: &mut Vec<beautytips::ActionDefinition>,
     action_map: &mut ActionMap,
 ) -> anyhow::Result<()> {
-    let qid = QualifiedActionId::new(update.name.clone());
-    let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+    let id = update.name.clone();
 
     if update.description.is_none()
         && update.show_output.is_none()
@@ -366,25 +386,14 @@ fn change_action(
         && update.inputs.is_none()
     {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is changing an existing action, but has no extra keys set"
+            "{id} is changing an existing action, but has no extra keys set"
         )));
     }
-    let Some(index) = action_map.get(&qid) else {
+    let Some(ad) = action_map.get_mut(&id) else {
         return Err(anyhow::anyhow!(format!(
-            "{qid} is changing an action that does not exist"
+            "{id} is changing an action that does not exist"
         )));
     };
-    if *index == usize::MAX {
-        return Err(anyhow::anyhow!(format!(
-            "{qid} is changing an action that was hidden before"
-        )));
-    }
-
-    let mut ad = actions
-        .get(*index)
-        .expect("must exist, we got an index")
-        .clone();
-    assert_eq!(ad.id, update.name.to_string());
 
     if let Some(description) = std::mem::take(&mut update.description) {
         ad.description = description;
@@ -404,40 +413,20 @@ fn change_action(
     if let Some(inputs) = update.inputs.take() {
         ad.input_filters
             .update_from(inputs)
-            .context(format!("While changing {qid}"))?;
+            .context(format!("While changing {id}"))?;
     }
-
-    let index = actions.len();
-    actions.push(ad);
-    action_map.insert(qid.clone(), index);
-    action_map.insert(s_qid.clone(), index);
 
     Ok(())
 }
 
-fn add_action(
-    update: &mut TomlActionDefinition,
-    source: &ActionSource,
-    actions: &mut Vec<beautytips::ActionDefinition>,
-    action_map: &mut ActionMap,
-) -> anyhow::Result<()> {
-    let qid = QualifiedActionId::new(update.name.clone());
-    let s_qid = QualifiedActionId::new_from_source(update.name.clone(), source.clone());
+fn add_action(update: &mut TomlActionDefinition, action_map: &mut ActionMap) -> anyhow::Result<()> {
+    let id = update.name.clone();
 
     let Some(command) = &update.command else {
         return Err(anyhow::anyhow!(format!(
             "Can not add {}: No command",
             update.name
         )));
-    };
-
-    if let Some(index) = action_map.get(&qid) {
-        if *index != usize::MAX {
-            return Err(anyhow::anyhow!(format!(
-                "{} already exists, can not add",
-                update.name
-            )));
-        }
     };
 
     let description = std::mem::take(&mut update.description).unwrap_or_default();
@@ -454,7 +443,6 @@ fn add_action(
 
     let ad = beautytips::ActionDefinition {
         id: update.name.to_string(),
-        source: source.to_string(),
         show_output,
         run_sequentially,
         description,
@@ -463,54 +451,43 @@ fn add_action(
         input_filters,
     };
 
-    let index = actions.len();
-    actions.push(ad);
-    action_map.insert(qid, index);
-    action_map.insert(s_qid, index);
+    let entry = action_map.entry(id);
+    if matches!(entry, std::collections::btree_map::Entry::Occupied(_)) {
+        return Err(anyhow::anyhow!(format!(
+            "{} already exists, can not add",
+            entry.key()
+        )));
+    };
+
+    entry.or_insert(ad);
 
     Ok(())
 }
 
 fn merge_actions(
-    mut actions: Vec<beautytips::ActionDefinition>,
     mut action_map: ActionMap,
     other: &mut ConfigurationSource,
-) -> anyhow::Result<(Vec<beautytips::ActionDefinition>, ActionMap)> {
+) -> anyhow::Result<ActionMap> {
     for mut action in other.actions.drain(..) {
         match action.merge {
-            MergeAction::Hide => hide_action(&action, &mut action_map)?,
+            MergeAction::Remove => remove_action(&action, &mut action_map)?,
             MergeAction::Change => {
-                change_action(&mut action, &other.source, &mut actions, &mut action_map)?;
+                change_action(&mut action, &mut action_map)?;
             }
             MergeAction::Add => {
-                add_action(&mut action, &other.source, &mut actions, &mut action_map)?;
+                add_action(&mut action, &mut action_map)?;
             }
         }
     }
-    Ok((actions, action_map))
+    Ok(action_map)
 }
 
 fn add_new_action_groups(
     mut action_groups: ActionGroups,
-    other: &ConfigurationSource,
+    other: &mut ConfigurationSource,
 ) -> ActionGroups {
-    for ag in &other.action_groups {
-        let qid = QualifiedActionId::new(ag.name.clone());
-        let s_qid = QualifiedActionId::new_from_source(ag.name.clone(), other.source.clone());
-        let ids = ag
-            .actions
-            .iter()
-            .map(|id| {
-                if id.source == "this".try_into().ok() {
-                    QualifiedActionId::new_from_source(id.id.clone(), other.source.clone())
-                } else {
-                    id.clone()
-                }
-            })
-            .collect::<Vec<_>>();
-
-        action_groups.insert(qid, ids.clone());
-        action_groups.insert(s_qid, ids);
+    for ag in other.action_groups.drain(..) {
+        action_groups.insert(ag.name, ag.actions);
     }
 
     action_groups
@@ -533,15 +510,15 @@ fn map_command(toml_command: &str) -> anyhow::Result<Vec<String>> {
 }
 
 fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyhow::Result<()> {
-    for (k, v) in action_groups {
-        for i in v {
-            if action_map.get(i).is_none() && action_groups.get(i).is_none() {
-                return Err(anyhow::anyhow!(
-                    "Action Group {k} has unknown dependency {i}"
-                ));
-            }
-        }
-    }
+    // for (k, v) in action_groups {
+    //     for i in v {
+    //         if action_map.get(i).is_none() && action_groups.get(i).is_none() {
+    //             return Err(anyhow::anyhow!(
+    //                 "Action Group {k} has unknown dependency {i}"
+    //             ));
+    //         }
+    //     }
+    // }
 
     Ok(())
 }
@@ -549,84 +526,36 @@ fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyho
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(mut self, mut other: ConfigurationSource) -> anyhow::Result<Self> {
-        let (actions, action_map) = merge_actions(
-            std::mem::take(&mut self.actions),
-            std::mem::take(&mut self.action_map),
-            &mut other,
-        )?;
+        let action_map = merge_actions(std::mem::take(&mut self.action_map), &mut other)?;
 
-        let action_groups = add_new_action_groups(std::mem::take(&mut self.action_groups), &other);
+        let action_groups =
+            add_new_action_groups(std::mem::take(&mut self.action_groups), &mut other);
 
         validate_state(&action_groups, &action_map)?;
 
         Ok(Self {
             action_groups,
-            actions,
             action_map,
         })
     }
 
-    fn add_actions(
-        &self,
-        action_name: &QualifiedActionId,
-        result: &mut HashSet<usize>,
-        visited: &mut HashSet<QualifiedActionId>,
-    ) -> anyhow::Result<()> {
-        if !visited.insert(action_name.clone()) {
-            return Ok(());
-        }
-
-        if let Some(index) = self.action_map.get(action_name) {
-            result.insert(*index);
-        } else if let Some(group_ids) = self.action_groups.get(action_name) {
-            for g in group_ids {
-                self.add_actions(g, result, visited)?;
-            }
-        } else if let Some(prefix) = action_name.to_string().strip_suffix("_all") {
-            let prefix = format!("{prefix}_");
-            for c in self
-                .action_map
-                .iter()
-                .filter_map(|(qid, _)| qid.to_string().starts_with(&prefix).then_some(qid))
-            {
-                self.add_actions(c, result, visited)?;
-            }
-        } else {
-            return Err(anyhow::anyhow!(format!("Unknown action {action_name}")));
-        }
-
-        Ok(())
-    }
-
     pub fn actions<'a>(
         &'a self,
-        action_names: &[QualifiedActionId],
-    ) -> anyhow::Result<beautytips::ActionDefinitionIterator<'a>> {
-        let mut indices = HashSet::new();
-        let mut visited = HashSet::new();
-
-        for action_name in action_names {
-            self.add_actions(action_name, &mut indices, &mut visited)?;
-        }
-
-        Ok(beautytips::ActionDefinitionIterator::new(
-            &self.actions,
-            indices,
-        ))
+        selectors: &ActionSelectors,
+    ) -> beautytips::ActionDefinitionIterator<'a> {
+        let selectors = find_selectors(&self.action_groups, selectors);
+        beautytips::ActionDefinitionIterator::new(find_actions(&self.action_map, &selectors))
     }
 }
 
 macro_rules! import_rules {
     ( $( $file: tt ),* ) => {{
         {
-            use std::convert::TryFrom;
-
             let config = Configuration::default();
             $(
                 let config = config.merge(
                     ConfigurationSource::from_string(
                         include_str!(std::concat!($file, ".toml")),
-                        ActionSource::try_from($file).expect(std::concat!($file, " is a valid action id"))
                     ).expect(std::concat!($file, " should parse fine"))
                 )
                 .expect(std::concat!($file, " merge ok"));
@@ -652,10 +581,9 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
         return Ok(base);
     }
 
-    let user = ConfigurationSource::from_path(config_file.as_path(), "user".try_into().unwrap())
-        .context(format!(
-            "Failed to parse configuration file {config_file:?}"
-        ))?;
+    let user = ConfigurationSource::from_path(config_file.as_path()).context(format!(
+        "Failed to parse configuration file {config_file:?}"
+    ))?;
     base.merge(user)
 }
 
@@ -665,71 +593,90 @@ mod tests {
 
     #[test]
     fn test_valid_id() {
-        assert!(is_valid_id("foo"));
-        assert!(is_valid_id("_foo_"));
-        assert!(is_valid_id("bar_123_foo"));
-        assert!(!is_valid_id("Bar_123_foo"));
-        assert!(!is_valid_id("123_Bar"));
+        assert!(is_valid_id("foo/bar"));
+        assert!(is_valid_id("_a/_b"));
+        assert!(is_valid_id("1a/1b"));
+        assert!(is_valid_id("1___a_dsd_/b___342144_zdfj"));
         assert!(!is_valid_id(""));
+        assert!(!is_valid_id("__1/bar"));
+        assert!(!is_valid_id("foo/1__"));
+        assert!(!is_valid_id("foo"));
+        assert!(!is_valid_id("_foo_"));
+        assert!(!is_valid_id("a/Bar"));
+    }
+
+    #[test]
+    fn test_find_selectors_recursive() {
+        let selectors = find_selectors(
+            &HashMap::from([
+                (
+                    ActionId::new("test/g1".to_string()).unwrap(),
+                    vec![
+                        ActionSelector::new("test/g2").unwrap(),
+                        ActionSelector::new("test/test1").unwrap(),
+                    ],
+                ),
+                (
+                    ActionId::new("test/g2".to_string()).unwrap(),
+                    vec![ActionSelector::new("test/group2").unwrap()],
+                ),
+            ]),
+            &ActionSelectors::new(["test/g1"]).unwrap(),
+        );
+
+        assert_eq!(selectors.len(), 4);
+        assert!(selectors.contains(&ActionSelector::new("test/g1").unwrap()));
+        assert!(selectors.contains(&ActionSelector::new("test/g2").unwrap()));
+        assert!(selectors.contains(&ActionSelector::new("test/group2").unwrap()));
     }
 
     #[test]
     fn test_configuration_from_str_ok() {
         let base = r#"[[actions]]
-name = "test_1"
+name = "test/t1"
 description = "foo"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[action_groups]]
-name = "test"
-actions = [ "test_1", "test_2" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-            .unwrap();
+        let base = ConfigurationSource::from_string(base).unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
-        assert_eq!(base.actions.len(), 2);
+        assert_eq!(base.action_map.len(), 2);
+        assert_eq!(base.action_groups.len(), 1);
+
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(
-                ActionId::try_from("test_1").unwrap()
-            )])
-            .unwrap()
-            .count(),
+            base.actions(&ActionSelectors::new(["test/t1"]).unwrap())
+                .count(),
             1
         );
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(
-                ActionId::try_from("test_2").unwrap()
-            )])
-            .unwrap()
-            .count(),
+            base.actions(&ActionSelectors::new(["test/t2"]).unwrap())
+                .count(),
             1
         );
-        assert!(base
-            .actions(&[QualifiedActionId::new(
-                ActionId::try_from("test_3").unwrap()
-            )])
-            .is_err());
-        assert_eq!(base.action_groups.len(), 2);
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(ActionId::try_from("test").unwrap())])
-                .unwrap()
+            base.actions(&ActionSelectors::new(["test/t3"]).unwrap())
+                .count(),
+            0
+        );
+        assert_eq!(
+            base.actions(&ActionSelectors::new(["test/g1"]).unwrap())
                 .count(),
             2
         );
         assert_eq!(
-            base.actions(&[QualifiedActionId::new(
-                ActionId::try_from("test_all").unwrap()
-            )])
-            .unwrap()
-            .count(),
+            base.actions(&ActionSelectors::new(["test/*"]).unwrap())
+                .count(),
             2
         );
     }
@@ -738,117 +685,107 @@ actions = [ "test_1", "test_2" ]
     fn test_configuration_from_str_empty_ok() {
         let base = "";
 
-        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-            .unwrap();
+        let base = ConfigurationSource::from_string(base).unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
-        assert_eq!(base.actions.len(), 0);
+        assert_eq!(base.action_map.len(), 0);
         assert_eq!(base.action_groups.len(), 0);
     }
 
     #[test]
     fn test_configuration_from_str_invalid_top_level_key() {
         let base = r#"[[action]]
-name = "test_1"
+name = "test/t1"
 command = "foobar x y z"
 "#;
 
-        assert!(
-            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-                .is_err()
-        );
+        assert!(ConfigurationSource::from_string(base).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_action_key() {
         let base = r#"[[actions]]
-name = "test_1"
+name = "test/t1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 id = "foobar"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[action_groups]]
-name = "test"
-actions = [ "test1", "test2" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        assert!(
-            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-                .is_err()
-        );
+        assert!(ConfigurationSource::from_string(base).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_action_group_key() {
         let base = r#"[[actions]]
-name = "test_1"
+name = "test/t1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[action_groups]]
-name = "test"
+name = "test/g1"
 id = "foobar"
-actions = [ "test1", "test2" ]
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        assert!(
-            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-                .is_err()
-        );
+        assert!(ConfigurationSource::from_string(base).is_err());
+    }
+
+    #[test]
+    fn test_configuration_from_str_invalid_action_selector() {
+        let base = r#"[[actions]]
+name = "test/t1"
+command = "foobar x y z"
+
+[[action_groups]]
+name = "test/g1"
+actions = [ "/**/foo**" ]
+"#;
+
+        assert!(ConfigurationSource::from_string(base).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_action_id() {
         let base = r#"[[actions]]
-name = "test-1"
+name = "INVALID"
 command = "foobar x y z"
-
-[[actions]]
-name = "test_2"
-description = "foo"
-command = "foobar \"a b c\""
-inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
-
-[[action_groups]]
-name = "test"
-actions = [ "test1", "test2" ]
 "#;
 
-        assert!(
-            ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-                .is_err()
-        );
+        assert!(ConfigurationSource::from_string(base).is_err());
     }
 
     #[test]
     fn test_configuration_from_str_invalid_glob() {
         let base = r#"[[actions]]
-name = "test_1"
+name = "test/t1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**a", "**/Cargo.toml" ]
 
 [[action_groups]]
-name = "test"
-actions = [ "test1", "test2" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-            .unwrap();
+        let base = ConfigurationSource::from_string(base).unwrap();
         assert!(Configuration::default().merge(base).is_err());
     }
 
@@ -856,59 +793,49 @@ actions = [ "test1", "test2" ]
     fn test_configuration_merge_empty() {
         let base = r#"[[actions]]
 description = "foo"
-name = "test_1"
+name = "test/t1"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "test_3b"
+name = "test/t3b"
 description = "foo"
 command = "do something"
 inputs.files = [ "**/*.slt", "**/*.rs" ]
 
 [[action_groups]]
-name = "test"
-actions = [ "test_1", "test_2" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-            .unwrap();
+        let base = ConfigurationSource::from_string(base).unwrap();
         let merge = Configuration::default().merge(base).unwrap();
 
-        assert_eq!(merge.actions.len(), 3);
+        assert_eq!(merge.action_map.len(), 3);
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_1").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t1"]).unwrap())
                 .count(),
             1
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_3b").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t3b"]).unwrap())
                 .count(),
             1
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_2").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t2"]).unwrap())
                 .count(),
             1
         );
-        assert_eq!(merge.action_groups.len(), 2);
+        assert_eq!(merge.action_groups.len(), 1);
         // let it = merge
         //     .named_actions(&[QualifiedActionId::new(ActionId::try_from("test").unwrap())])
         //     .unwrap();
@@ -918,96 +845,81 @@ actions = [ "test_1", "test_2" ]
     #[test]
     fn test_configuration_merge() {
         let base = r#"[[actions]]
-name = "test_1"
+name = "test/t1"
 description = "foo"
 command = "foobar x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 description = "foo"
 command = "foobar \"a b c\""
 inputs.files = [ "**/*.rs", "**/Cargo.toml" ]
 
 [[actions]]
-name = "test_3b"
+name = "test/t3b"
 description = "foo"
 command = "do something"
 inputs.files = [ "**/*.slt", "**/*.rs" ]
 
 [[action_groups]]
-name = "test"
-actions = [ "test_1", "test_2" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t2" ]
 "#;
 
-        let base = ConfigurationSource::from_string(base, ActionSource::try_from("test").unwrap())
-            .unwrap();
+        let base = ConfigurationSource::from_string(base).unwrap();
         let base = Configuration::default().merge(base).unwrap();
 
         let other = r#"[[actions]]
-name = "test_3o"
+name = "test/t3o"
 description = "foo"
 command = "bar foo x y z"
 
 [[actions]]
-name = "test_2"
+name = "test/t2"
 merge = "change"
 command = "/dev/null"
 
 [[actions]]
-name = "test_1"
+name = "test/t1"
 merge = "change"
 command = "bar foo x y z"
 
 [[action_groups]]
-name = "test"
-actions = [ "test_1", "test_3o", "test_3b" ]
+name = "test/g1"
+actions = [ "test/t1", "test/t3o", "test/t3b" ]
 
 [[action_groups]]
-name = "test_group"
-actions = [ "test_3b" ]
+name = "test/g2"
+actions = [ "test/t3b" ]
 "#;
-        let other =
-            ConfigurationSource::from_string(other, ActionSource::try_from("test2").unwrap())
-                .unwrap();
+        let other = ConfigurationSource::from_string(other).unwrap();
 
         let merge = base.merge(other).unwrap();
 
-        assert_eq!(merge.actions.len(), 6);
+        assert_eq!(merge.action_map.len(), 4);
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_1").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t1"]).unwrap())
                 .count(),
             1
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_3b").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t3b"]).unwrap())
                 .count(),
             1
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_3o").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/t3o"]).unwrap())
                 .count(),
             1
         );
         assert_eq!(
             merge
-                .actions(&[QualifiedActionId::new(
-                    ActionId::try_from("test_group").unwrap()
-                )])
-                .unwrap()
+                .actions(&ActionSelectors::new(["test/g1"]).unwrap())
                 .count(),
-            1
+            3
         );
     }
 
@@ -1015,7 +927,7 @@ actions = [ "test_3b" ]
     fn test_builtins() {
         let builtin = builtin();
 
-        assert!(!builtin.actions.is_empty());
+        assert!(!builtin.action_map.is_empty());
         assert!(builtin.action_groups.is_empty());
     }
 }

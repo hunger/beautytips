@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 
 use std::{ffi::OsString, path::PathBuf};
 
-use crate::config::QualifiedActionId;
+use crate::config::{ActionSelector, ActionSelectors};
 
 /// Where to get files to look at from
 #[derive(Clone, Debug, Args)]
@@ -50,7 +50,7 @@ enum CliCommand {
         #[command(flatten)]
         vcs_input_extra: CliVcsExtra,
         #[arg(long = "actions", num_args = 1.., value_name = "ACTION")]
-        actions: Vec<QualifiedActionId>,
+        actions: Vec<ActionSelector>,
     },
 }
 
@@ -78,7 +78,7 @@ pub enum Command {
     ListActions {},
     RunActions {
         source: beautytips::InputFiles,
-        actions: Vec<QualifiedActionId>,
+        actions: ActionSelectors,
     },
 }
 
@@ -128,7 +128,7 @@ pub fn command() -> anyhow::Result<CommandlineConfiguration> {
             vcs_input_extra,
         } => Command::RunActions {
             source: generate_input_files(&source, &vcs_input_extra)?,
-            actions,
+            actions: actions.into(),
         },
     };
 

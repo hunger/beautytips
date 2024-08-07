@@ -62,7 +62,7 @@ fn main() -> Result<()> {
         } => {
             let reporter = reporter::Reporter::default();
 
-            let actions = config.actions(&actions)?;
+            let actions = config.actions(&actions);
 
             beautytips::run(
                 std::env::current_dir()?,

@@ -1,36 +1,36 @@
 [[actions]]
-name = "check_large_file"
+name = "builtin/check_large_file"
 description = "Check for large files in commit"
 run-sequentially = false
 command = "{BEAUTY_TIPS} builtin large-files -- --size=50k -- {{files...}}"
 
 [[actions]]
-name = "check_bom"
+name = "builtin/check_bom"
 description = "Check files for a byte order mark"
 run-sequentially = false
 command = "{BEAUTY_TIPS} builtin bom -- -- {{files...}}"
 
 [[actions]]
-name = "fix_bom"
+name = "builtin/fix_bom"
 description = "Remove byte-order-mark from files"
 # --fix=(on|off): Turn fixing on or off
 command = "{BEAUTY_TIPS} builtin bom -- --fix=on -- {{files...}}"
 
 [[actions]]
-name = "check_mixed_line_endings"
+name = "builtin/check_mixed_line_endings"
 run-sequentially = false
 description = "Check files for mixed line endings"
 command = "{BEAUTY_TIPS} builtin mixed-line-endings -- -- {{files...}}"
 
 [[actions]]
-name = "fix_mixed_line_endings"
+name = "builtin/fix_mixed_line_endings"
 description = "Unify files to consistently use one line ending"
 # --fix=(cr|crlf|lf|auto): Fix towards one of the options or pick the
 #         one used most widely in a file
 command = "{BEAUTY_TIPS} builtin bom -- --fix=auto -- {{files...}}"
 
 [[actions]]
-name = "debug_print_environment"
+name = "builtin/check_print_environment"
 description = "Print out the entire environment the processes run in"
 show-output = "always"
 command = "{BEAUTY_TIPS} builtin print-environment -- -- {{files...}}"

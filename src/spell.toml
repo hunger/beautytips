@@ -1,5 +1,5 @@
 [[actions]]
-name = "check_code_spell"
+name = "cspell/check"
 description = "Run cspell"
 run-sequentially = false
 command = "cspell lint --no-progress --no-color {{files...}}"

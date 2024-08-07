@@ -1,19 +1,19 @@
 [[actions]]
-name = "check_toml"
+name = "toml/check"
 description = "Run taplo lint"
 run-sequentially = false
 command = "taplo lint --colors=never {{files...}}"
 inputs.files = ["**/*.toml"]
 
 [[actions]]
-name = "check_toml_fmt"
+name = "toml/check_fmt"
 description = "Run taplo fmt"
 run-sequentially = false
 command = "taplo fmt --colors=never --check {{files...}}"
 inputs.files = ["**/*.toml"]
 
 [[actions]]
-name = "fix_toml_fmt"
+name = "toml/fix_fmt"
 description = "Run taplo fmt and have it fix the files"
 run-sequentially = true
 command = "taplo fmt --colors=never {{files...}}"
