@@ -13,6 +13,12 @@ use beautytips::InputFilters;
 #[serde(try_from = "String", expecting = "an action id")]
 pub struct ActionId(String);
 
+fn is_valid_id(id: &str) -> bool {
+    !(id.chars()
+        .any(|c| !c.is_ascii_lowercase() && c != '_' && !c.is_ascii_digit()))
+        && !id.is_empty()
+}
+
 impl ActionId {
     /// Create a new `ActionId`
     ///
@@ -21,14 +27,10 @@ impl ActionId {
     /// Raise an invalid configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
     pub fn new(input: String) -> anyhow::Result<Self> {
-        if input
-            .chars()
-            .any(|c| !c.is_ascii_lowercase() && c != '_' && !c.is_ascii_digit())
-            && !input.is_empty()
-        {
-            Err(anyhow::anyhow!("{input} is not a valid action id"))
-        } else {
+        if is_valid_id(&input) {
             Ok(Self(input))
+        } else {
+            Err(anyhow::anyhow!("{input} is not a valid action id"))
         }
     }
 
@@ -85,14 +87,10 @@ impl ActionSource {
     /// Raise an invalid configuration error if the action id contains anything
     /// but lowercase ASCII letters or '_'.
     pub fn new(input: String) -> anyhow::Result<Self> {
-        if input
-            .chars()
-            .any(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit())
-            && !input.is_empty()
-        {
-            Err(anyhow::anyhow!("{input} is not a valid action source"))
-        } else {
+        if is_valid_id(&input) {
             Ok(Self(input))
+        } else {
+            Err(anyhow::anyhow!("{input} is not a valid action source"))
         }
     }
 
@@ -685,6 +683,16 @@ pub fn load_user_configuration() -> anyhow::Result<Configuration> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_valid_id() {
+        assert!(is_valid_id("foo"));
+        assert!(is_valid_id("_foo_"));
+        assert!(is_valid_id("bar_123_foo"));
+        assert!(!is_valid_id("Bar_123_foo"));
+        assert!(!is_valid_id("123_Bar"));
+        assert!(!is_valid_id(""));
+    }
 
     #[test]
     fn test_configuration_from_str_ok() {
