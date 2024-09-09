@@ -49,7 +49,7 @@ fn find_selectors(action_groups: &ActionGroups, selectors: &ActionSelectors) -> 
     while next_result.len() != result.len() {
         result.0.extend(next_result.0.iter().cloned());
         for (n, group_selectors) in action_groups {
-            for s in result.0.iter() {
+            for s in &result.0 {
                 if s.matches(n) {
                     next_result.extend(group_selectors.clone());
                 }
@@ -509,20 +509,6 @@ fn map_command(toml_command: &str) -> anyhow::Result<Vec<String>> {
     Ok(command)
 }
 
-fn validate_state(action_groups: &ActionGroups, action_map: &ActionMap) -> anyhow::Result<()> {
-    // for (k, v) in action_groups {
-    //     for i in v {
-    //         if action_map.get(i).is_none() && action_groups.get(i).is_none() {
-    //             return Err(anyhow::anyhow!(
-    //                 "Action Group {k} has unknown dependency {i}"
-    //             ));
-    //         }
-    //     }
-    // }
-
-    Ok(())
-}
-
 impl Configuration {
     /// Merge `other` onto the base of `self`
     pub fn merge(mut self, mut other: ConfigurationSource) -> anyhow::Result<Self> {
@@ -530,8 +516,6 @@ impl Configuration {
 
         let action_groups =
             add_new_action_groups(std::mem::take(&mut self.action_groups), &mut other);
-
-        validate_state(&action_groups, &action_map)?;
 
         Ok(Self {
             action_groups,

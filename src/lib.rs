@@ -2,7 +2,6 @@
 // Copyright (C) 2024 Tobias Hunger <tobias.hunger@gmail.com>
 
 pub(crate) mod actions;
-pub(crate) mod util;
 pub(crate) mod vcs;
 
 use std::{collections::HashMap, path::PathBuf};

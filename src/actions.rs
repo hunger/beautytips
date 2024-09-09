@@ -132,7 +132,7 @@ async fn run_single_action(
     inputs: inputs::InputQuery,
 ) -> crate::Result<()> {
     tracing::debug!("running action '{}': {:?}", action.id, action.command);
-    let action_id = format!("{}", action.id);
+    let action_id = action.id.to_string();
 
     sender
         .send(ActionUpdate::Started {
