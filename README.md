@@ -46,16 +46,14 @@ List all files `beautytips` will run actions on. In this case check the
 beautytips list-files --from-vcs=jj
 ```
 
-Run all actions that start with `check_` on all files in the current
-directory:
+Run all 'check' actions on all files in the current directory:
 
 ```sh
-beautytips run --from-dir . --actions check_all
+beautytips run --from-dir . '*/check_*'
 ```
 
-Run all actions that start with `fix_` in the `rust` namespace on all files
-git considers changed:
+Run all `fix` actions `cargo` namespace on all files git considers changed:
 
 ```sh
-beautytips run --from-vcs=git --actions rust/fix_all
+beautytips run --from-vcs=git 'cargo/fix_*'
 ```

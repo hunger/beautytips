@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+ * Support for ruff, biome and mypy (TS/JS and pyton)
+
+### Changed
+
+ * Config files for actions were made more powerful to handle the new tools
+
 ## [0.1.5] - 2024-06-29
 
 ### Changed
