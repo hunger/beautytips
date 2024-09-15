@@ -1,0 +1,6 @@
+[[actions]]
+name = "mypy/check_lint"
+description = "Use mypy to lint files"
+run-sequentially = false
+command = "mypy {{files...}}"
+inputs.files = ["**/*.py", "**/*.pyi", "**/*.ipynb"]

@@ -1,0 +1,27 @@
+[[actions]]
+name = "biome/check_format"
+description = "Use biome to check the formatting of files"
+run-sequentially = false
+command = "biome format --colors=off {{files...}}"
+inputs.files = ["**/*.js", "**/.ts", "**/*.jsx", "**/*.tsx", "**/*.json", "**/*.jsonc", "**/*.css"]
+
+[[actions]]
+name = "biome/fix_format"
+description = "Use biome to fix the formatting of files"
+run-sequentially = true
+command = "biome format --write --colors=off {{files...}}"
+inputs.files = ["**/*.js", "**/.ts", "**/*.jsx", "**/*.tsx", "**/*.json", "**/*.jsonc", "**/*.css"]
+
+[[actions]]
+name = "biome/check_lint"
+description = "Use biome to lint files"
+run-sequentially = false
+command = "biome lint --colors=off {{files...}}"
+inputs.files = ["**/*.js", "**/.ts", "**/*.jsx", "**/*.tsx", "**/*.json", "**/*.jsonc", "**/*.css"]
+
+[[actions]]
+name = "biome/fix_lint"
+description = "Use biome to fix lint problems in files"
+run-sequentially = true
+command = "biome lint --write --colors=off {{files...}}"
+inputs.files = ["**/*.js", "**/.ts", "**/*.jsx", "**/*.tsx", "**/*.json", "**/*.jsonc", "**/*.css"]

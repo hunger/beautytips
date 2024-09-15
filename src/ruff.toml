@@ -1,0 +1,31 @@
+[[actions]]
+name = "ruff/check_format"
+description = "Use ruff to check the formatting of files"
+run-sequentially = false
+command = "ruff format --check {{files...}}"
+environment = [ "NO_COLOR=1" ]
+inputs.files = ["**/*.py", "**/*.pyi", "**/*.ipynb", "**/pyproject.toml"]
+
+[[actions]]
+name = "ruff/fix_format"
+description = "Use ruff to fix the formatting of files"
+run-sequentially = true
+command = "ruff format {{files...}}"
+environment = [ "NO_COLOR=1" ]
+inputs.files = ["**/*.py", "**/*.pyi", "**/*.ipynb", "**/pyproject.toml"]
+
+[[actions]]
+name = "ruff/check_lint"
+description = "Use ruff to lint files"
+run-sequentially = false
+environment = [ "NO_COLOR=1" ]
+command = "ruff check {{files...}}"
+inputs.files = ["**/*.py", "**/*.pyi", "**/*.ipynb", "**/pyproject.toml"]
+
+[[actions]]
+name = "ruff/fix_lint"
+description = "Use ruff to fix lint problems in files"
+run-sequentially = true
+command = "ruff check --fix {{files...}}"
+environment = [ "NO_COLOR=1" ]
+inputs.files = ["**/*.py", "**/*.pyi", "**/*.ipynb", "**/pyproject.toml"]

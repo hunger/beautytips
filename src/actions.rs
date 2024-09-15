@@ -26,6 +26,7 @@ pub struct ActionDefinition {
     pub description: String,
     pub run_sequentially: bool,
     pub command: Vec<String>,
+    pub environment: Vec<(String, String)>,
     pub show_output: OutputCondition,
     pub expected_exit_code: i32,
     pub input_filters: inputs::InputFilters,
@@ -216,7 +217,13 @@ async fn run_single_action(
         let output = tokio::process::Command::new(command)
             .current_dir(current_directory.clone())
             .args(args.args_iter())
-            .envs(extra_environment.iter())
+            .envs(
+                action
+                    .environment
+                    .iter()
+                    .map(|(k, v)| (k, v))
+                    .chain(extra_environment.iter()),
+            )
             .output()
             .await
             .context(format!("Could not start '{command}'"))?;

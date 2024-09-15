@@ -30,7 +30,7 @@ description = "Unify files to consistently use one line ending"
 command = "{BEAUTY_TIPS} builtin bom -- --fix=auto -- {{files...}}"
 
 [[actions]]
-name = "builtin/check_print_environment"
+name = "builtin/debug_print_environment"
 description = "Print out the entire environment the processes run in"
 show-output = "always"
 command = "{BEAUTY_TIPS} builtin print-environment -- -- {{files...}}"

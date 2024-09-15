@@ -49,7 +49,7 @@ enum CliCommand {
         source: CliInputFiles,
         #[command(flatten)]
         vcs_input_extra: CliVcsExtra,
-        #[arg(long = "actions", num_args = 1.., value_name = "ACTION")]
+        #[arg(value_name = "ACTIONS")]
         actions: Vec<ActionSelector>,
     },
 }

@@ -278,6 +278,8 @@ pub struct TomlActionDefinition {
     #[serde(default)]
     pub command: Option<String>,
     #[serde(default)]
+    pub environment: Option<Vec<String>>,
+    #[serde(default)]
     pub run_sequentially: Option<bool>,
     #[serde(default)]
     pub exit_code: Option<i32>,
@@ -372,6 +374,17 @@ fn match_output_condition(output: &OutputCondition) -> beautytips::OutputConditi
     }
 }
 
+fn map_environment(environment: &[String]) -> Vec<(String, String)> {
+    environment
+        .iter()
+        .map(|k| {
+            k.split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .unwrap_or_else(|| (k.to_string(), String::new()))
+        })
+        .collect()
+}
+
 fn change_action(
     update: &mut TomlActionDefinition,
     action_map: &mut ActionMap,
@@ -382,6 +395,7 @@ fn change_action(
         && update.show_output.is_none()
         && update.run_sequentially.is_none()
         && update.command.is_none()
+        && update.environment.is_none()
         && update.exit_code.is_none()
         && update.inputs.is_none()
     {
@@ -406,6 +420,9 @@ fn change_action(
     }
     if let Some(command) = &update.command {
         ad.command = map_command(command)?;
+    }
+    if let Some(env) = update.environment.take() {
+        ad.environment = map_environment(&env);
     }
     if let Some(exit_code) = &update.exit_code {
         ad.expected_exit_code = *exit_code;
@@ -440,6 +457,11 @@ fn add_action(update: &mut TomlActionDefinition, action_map: &mut ActionMap) -> 
     } else {
         beautytips::InputFilters::default()
     };
+    let environment = if let Some(env) = &update.environment {
+        map_environment(&env)
+    } else {
+        vec![]
+    };
 
     let ad = beautytips::ActionDefinition {
         id: update.name.to_string(),
@@ -447,6 +469,7 @@ fn add_action(update: &mut TomlActionDefinition, action_map: &mut ActionMap) -> 
         run_sequentially,
         description,
         command,
+        environment,
         expected_exit_code,
         input_filters,
     };
@@ -550,7 +573,16 @@ macro_rules! import_rules {
 }
 
 pub fn builtin() -> Configuration {
-    import_rules!("builtin", "github", "rust", "spell", "toml")
+    import_rules!(
+        "actionlint",
+        "biome",
+        "builtin",
+        "cargo",
+        "cspell",
+        "mypy",
+        "ruff",
+        "taplo"
+    )
 }
 
 pub fn load_user_configuration() -> anyhow::Result<Configuration> {
