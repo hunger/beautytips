@@ -3,11 +3,11 @@
 
 [package]
 authors = ["Tobias Hunger <tobias.hunger@gmail.com>"]
-edition = "2021"
+edition = "2024"
 homepage = "https://github.com/hunger/beautytips"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/hunger/beautytips"
-rust-version = "1.77"
+rust-version = "1.85"
 version = "0.2.0"
 name = "beautytips"
 description = "The beautytips code prettifier"

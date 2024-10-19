@@ -378,9 +378,7 @@ fn map_environment(environment: &[String]) -> Vec<(String, String)> {
     environment
         .iter()
         .map(|k| {
-            k.split_once('=')
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .unwrap_or_else(|| (k.to_string(), String::new()))
+            k.split_once('=').map_or_else(|| (k.to_string(), String::new()), |(k, v)| (k.to_string(), v.to_string()))
         })
         .collect()
 }
@@ -458,7 +456,7 @@ fn add_action(update: &mut TomlActionDefinition, action_map: &mut ActionMap) -> 
         beautytips::InputFilters::default()
     };
     let environment = if let Some(env) = &update.environment {
-        map_environment(&env)
+        map_environment(env)
     } else {
         vec![]
     };
@@ -480,7 +478,7 @@ fn add_action(update: &mut TomlActionDefinition, action_map: &mut ActionMap) -> 
             "{} already exists, can not add",
             entry.key()
         )));
-    };
+    }
 
     entry.or_insert(ad);
 

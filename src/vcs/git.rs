@@ -26,7 +26,7 @@ impl Git {
 
 #[async_trait::async_trait]
 impl vcs::Vcs for Git {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "git"
     }
 
@@ -55,7 +55,7 @@ impl vcs::Vcs for Git {
                     tmp.push(from.clone());
                     tmp.push(to.clone());
                 }
-            };
+            }
             tmp
         };
 

@@ -152,7 +152,7 @@ impl beautytips::Reporter for Reporter {
                 )
                 .expect("print failed");
             }
-        };
+        }
 
         if !self.running.is_empty() {
             self.print_status();

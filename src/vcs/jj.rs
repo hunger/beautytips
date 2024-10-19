@@ -20,7 +20,7 @@ impl Jj {
 
 #[async_trait::async_trait]
 impl vcs::Vcs for Jj {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "jj"
     }
 

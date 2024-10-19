@@ -281,9 +281,9 @@ impl InputCache {
                             .send(Err(format!("Input '{query_name}' is not supported")))
                             .expect("Failed to send internal message");
                     }
-                };
+                }
             }
-        };
+        }
 
         Ok(true)
     }
