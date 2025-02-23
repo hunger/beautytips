@@ -107,10 +107,10 @@ fn check_large_files(
         let actual_size = meta.len();
 
         if actual_size > size {
-            eprintln!("{p:?}: {} bytes too big", actual_size - size);
+            eprintln!("{}: {} bytes too big", p.display(), actual_size - size);
             large_files += 1;
         } else if verbosity > 0 {
-            eprintln!("{p:?}: {actual_size} bytes, OK");
+            eprintln!("{}: {actual_size} bytes, OK", p.display());
         }
     }
     Ok(large_files)
@@ -168,20 +168,20 @@ fn handle_bom(args: &[(String, String)], inputs: &[PathBuf], verbosity: u8) -> a
                                 .context("Failed to write file {p:?}")?;
                             let mut buf = std::io::BufWriter::new(file);
                             buf.write_all(&contents).context("Failed to write data")?;
-                            eprintln!("{p:?}: byte order mark removed");
+                            eprintln!("{}: byte order mark removed", p.display());
                             continue;
                         }
                     } else {
-                        eprintln!("{p:?}: byte order mark found");
+                        eprintln!("{}: byte order mark found", p.display());
                     }
                     unfixed_boms += 1;
                 } else if verbosity > 0 {
-                    eprintln!("{p:?}: no byte order mark, OK");
+                    eprintln!("{}: no byte order mark, OK", p.display());
                 }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 if verbosity > 0 {
-                    eprintln!("{p:?}: too short for a byte order mark");
+                    eprintln!("{}: too short for a byte order mark", p.display());
                 }
             }
             Err(e) => return Err(e).context("Failed to read byte oder mark"),
@@ -369,14 +369,18 @@ fn handle_mixed_line_endings(
 
         if is_binary {
             if verbosity > 0 {
-                eprintln!("{p:?}: binary file, SKIPPING");
+                eprintln!("{}: binary file, SKIPPING", p.display());
             }
             continue;
         }
 
         if !is_mixed {
             if verbosity > 0 {
-                eprintln!("{p:?}: {} only, OK", LINE_ENDING_NAMES[majority_index]);
+                eprintln!(
+                    "{}: {} only, OK",
+                    p.display(),
+                    LINE_ENDING_NAMES[majority_index]
+                );
             }
             continue;
         }
@@ -401,13 +405,14 @@ fn handle_mixed_line_endings(
             let mut buf = std::io::BufWriter::new(file);
             buf.write_all(&new_contents)
                 .context("Failed to write data")?;
-            eprintln!("{p:?}: FIXED to {}", LINE_ENDING_NAMES[fix_index]);
+            eprintln!("{}: FIXED to {}", p.display(), LINE_ENDING_NAMES[fix_index]);
             continue;
         }
 
         mixed_line_endings += 1;
         eprintln!(
-            "{p:?}: mixed with {} being the majority FAIL",
+            "{}: mixed with {} being the majority FAIL",
+            p.display(),
             LINE_ENDING_NAMES[majority_index]
         );
     }
@@ -423,7 +428,7 @@ fn print_environment(args: &[(String, String)], inputs: &[PathBuf], verbosity: u
     }
     println!("Inputs");
     for p in inputs {
-        println!("    {p:?}");
+        println!("    {}", p.display());
     }
     println!("Environment:");
     for (k, v) in std::env::vars() {

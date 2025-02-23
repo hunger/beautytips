@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 
 use std::{ffi::OsString, path::PathBuf};
 
-use crate::config::{ActionSelector, ActionSelectors};
+use crate::action_config::{ActionSelector, ActionSelectors};
 
 /// Where to get files to look at from
 #[derive(Clone, Debug, Args)]

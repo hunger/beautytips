@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use actions::ActionUpdateReceiver;
 pub use actions::{
-    inputs::InputFilters, ActionDefinition, ActionDefinitionIterator, OutputCondition,
+    ActionDefinition, ActionDefinitionIterator, OutputCondition, inputs::InputFilters,
 };
 
 use anyhow::Context;
@@ -44,6 +44,11 @@ impl Default for InputFiles {
     fn default() -> Self {
         Self::Vcs(VcsInput::default())
     }
+}
+
+#[derive(Debug)]
+pub struct RunnerConfig {
+    pub extra_env: HashMap<String, String>,
 }
 
 pub use actions::ActionResult;
@@ -100,13 +105,13 @@ async fn collect_input_files_impl(
     let root_directory = tokio::fs::canonicalize(&context.root_directory)
         .await
         .context(format!(
-            "Could not canonicalize '{:?}",
-            context.root_directory
+            "Could not canonicalize '{}'",
+            context.root_directory.display()
         ))?;
 
     std::env::set_current_dir(&root_directory).context(format!(
-        "Failed to set current directory to {:?}",
-        context.root_directory
+        "Failed to set current directory to '{}'",
+        context.root_directory.display()
     ))?;
 
     let mut canonical_files = Vec::new();
@@ -205,6 +210,7 @@ pub fn collect_input_files<'a>(
 pub fn run<'a>(
     current_directory: PathBuf,
     inputs: InputFiles,
+    runner_config: crate::RunnerConfig,
     actions: actions::ActionDefinitionIterator<'a>,
     reporter: Box<dyn Reporter>,
 ) -> Result<()> {

@@ -4,6 +4,7 @@
 use anyhow::{Context, Result};
 use tracing_subscriber::prelude::*;
 
+mod action_config;
 mod arg_parse;
 mod builtin_commands;
 mod config;
@@ -22,7 +23,7 @@ fn main() -> Result<()> {
 
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
-    let config = config::load_user_configuration()?;
+    let config = action_config::load_user_actions()?;
 
     tracing_subscriber::registry()
         .with(stdout_log.with_filter(max_level))
@@ -50,9 +51,9 @@ fn main() -> Result<()> {
         arg_parse::Command::ListFiles { source } => {
             let (root_dir, files) =
                 beautytips::collect_input_files(std::env::current_dir()?, source)?;
-            println!("root directory: {root_dir:?}");
+            println!("root directory: {}", root_dir.display());
             for f in &files {
-                println!("{f:?}");
+                println!("{}", f.display());
             }
             Ok(())
         }
@@ -64,9 +65,12 @@ fn main() -> Result<()> {
 
             let actions = config.actions(&actions);
 
+            let runner_config = config::load_configuration()?;
+
             beautytips::run(
                 std::env::current_dir()?,
                 inputs,
+                runner_config.runner_config(),
                 actions,
                 Box::new(reporter),
             )?;
